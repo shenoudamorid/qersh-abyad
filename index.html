@@ -2653,7 +2653,9 @@ function renderSet(){
         <button class="item" id="expJson"><em>⛁</em><span class="nm">نسخة احتياطية كاملة
           <small>${S.settings.lastBackup?'آخر نسخة '+dayLabel(iso(new Date(S.settings.lastBackup))):'لسه مأخدتش نسخة'}</small></span><span class="chev">‹</span></button>
         <div class="perf"></div>
-        <button class="item" id="impJson"><em>⤒</em><span class="nm">استرجاع من نسخة احتياطية</span><span class="chev">‹</span></button>
+        <button class="item" id="impJson"><em>⤒</em><span class="nm">استرجاع من نسخة احتياطية<small>من ملف، أو بلصق البيانات المنسوخة</small></span><span class="chev">‹</span></button>
+        <div class="perf"></div>
+        <button class="item" id="cpJson"><em>⧉</em><span class="nm">نسخ كل البيانات<small>لنقلها لتطبيق تاني من غير ملفات — انسخ هنا والصق هناك</small></span><span class="chev">‹</span></button>
         <div class="perf"></div>
         <button class="item danger" id="wipe"><em>⌫</em><span class="nm">حذف كل الحركات</span><span class="chev">‹</span></button>
       </div>
@@ -2690,6 +2692,7 @@ function renderSet(){
   $('#expCsv').onclick=exportCsv;
   $('#expJson').onclick=exportJson;
   $('#impJson').onclick=importJson;
+  $('#cpJson').onclick=copyAll;
   $('#wipe').onclick=wipe;
   if($('#nagBk')) $('#nagBk').onclick=exportJson;
   $('#lockBtn').onclick=lockSheet;
@@ -2860,22 +2863,50 @@ async function exportJson(){
   S.settings.lastBackup=Date.now(); await saveSettings();
   renderSet(); toast('النسخة الاحتياطية جاهزة');
 }
+async function copyAll(){
+  const text=backupJson();
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){
+    /* older iPhones: select a textarea and copy */
+    const t=document.createElement('textarea'); t.value=text; t.setAttribute('readonly','');
+    t.style.cssText='position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(t);
+    t.select(); t.setSelectionRange(0,text.length); let ok=false; try{ ok=document.execCommand('copy'); }catch(_){}
+    t.remove(); if(!ok) return alert('مقدرتش أنسخ — استخدم «نسخة احتياطية كاملة» واحفظ الملف.');
+  }
+  alert(`اتنسخ ✅ (${S.tx.length} حركة${S.stays.length?` · ${S.stays.length} حجز`:''})\nافتح التطبيق التاني ← الإعدادات ← استرجاع من نسخة احتياطية ← الصق.`);
+}
 function importJson(){
-  /* no `accept` filter: iPhone sometimes saves the backup under another type and greys it out */
-  const i=document.createElement('input'); i.type='file';
-  i.onchange=async()=>{
-    const f=i.files[0]; if(!f) return;
+  sheet(`<h2>استرجاع البيانات</h2>
+    <p class="lede">اختار ملف النسخة الاحتياطية، <b>أو</b> الصق البيانات اللي نسختها بـ «نسخ كل البيانات» من التطبيق التاني.</p>
+    <div class="f"><label>١. من ملف</label>
+      <input id="imFile" type="file" style="padding:14px;border-style:dashed;background:var(--ink)"></div>
+    <div class="f"><label>٢. أو الصق البيانات هنا</label>
+      <textarea id="imText" rows="4" placeholder="دوس هنا ← لصق" style="font-size:12px;direction:ltr;text-align:left"></textarea></div>
+    <div id="imMsg" style="font-size:13px;min-height:18px;color:var(--dim)"></div>
+    <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="imOk">استرجع</button></div>`);
+  const msg=t=>{ $('#imMsg').innerHTML=t; };
+  $('#imFile').onchange=async()=>{
+    const f=$('#imFile').files[0]; if(!f) return;
+    msg('جاري قراية الملف…');
+    try{ $('#imText').value=await f.text(); msg(`الملف اتقرا (${Math.round(f.size/1024)} KB) — دوس «استرجع»`); }
+    catch(e){ msg('<span style="color:var(--red)">مقدرتش أقرا الملف — جرّب اللصق</span>'); }
+  };
+  $('#imOk').onclick=()=>restoreFrom($('#imText').value);
+}
+async function restoreFrom(text){
+  {
+    if(!String(text||'').trim()) return alert('اختار ملف أو الصق البيانات الأول.');
     let raw;
-    try{ raw=JSON.parse((await f.text()).replace(/^\ufeff/,'')); }
-    catch(e){ return alert('الملف ده مش نسخة احتياطية من التطبيق (مش بصيغة JSON).\nاختار الملف اللي اسمه زي qersh-abyad-backup-….json أو masareef-backup-….json'); }
+    try{ raw=JSON.parse(String(text).trim().replace(/^﻿/,'')); }
+    catch(e){ return alert('ده مش نسخة احتياطية من التطبيق.\nاختار ملف qersh-abyad-backup-….json أو masareef-backup-….json، أو الصق البيانات المنسوخة كاملة.'); }
     const {d,skipped}=repairBackup(raw);
     const bad=d?checkBackup(d):'not an object';
-    if(bad) return alert('الملف ده مش نسخة احتياطية كاملة من التطبيق.\n('+bad+')');
+    if(bad) return alert('ده مش نسخة احتياطية كاملة من التطبيق.\n('+bad+')');
     const n=d.tx.length;
     if(!confirm(`النسخة فيها ${n} حركة${d.stay&&d.stay.length?` و${d.stay.length} حجز`:''}.\nالاسترجاع هيحط البيانات دي مكان البيانات الحالية على الموبايل ده. تكمل؟`)) return;
-    /* a safety copy of what's here now, kept inside the app instead of a download
-       (on iPhone a download in the middle can interrupt the restore) */
+    /* a safety copy of what's here now, kept inside the app */
     if(S.tx.length) await Store.put('meta',{id:'preRestore',at:Date.now(),v:backupJson()}).catch(()=>{});
+    closeSheet();
 
     let accts=d.acct||[];
     if(!accts.length) accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
@@ -2915,8 +2946,7 @@ function importJson(){
     renderAccts(); renderCats(); renderQuick(); renderSet(); renderRail(); renderReadout(); renderLog(); renderWal();
     alert(`اترجعت البيانات ✅\n${n} حركة${S.stays.length?` · ${S.stays.length} حجز`:''}${S.accts.length?` · ${S.accts.length} حساب`:''}${skipped?`\n(${skipped} سطر بايظ في الملف اتساب)`:''}`);
     go('log');
-  };
-  i.click();
+  }
 }
 async function wipe(){
   if(!confirm('حذف كل الحركات؟ الحسابات والتصنيفات والبنود الثابتة والسلف والحجوزات وعقود الإيجار هتفضل — بس الدخل اللي اتسجل منها هيتمسح.')) return;
