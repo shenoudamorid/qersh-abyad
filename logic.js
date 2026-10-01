@@ -110,9 +110,13 @@ function debtFlows(d){
 }
 
 /* ═══════ nightly stays ═══════ */
-/* a booking: {from:'YYYY-MM-DD', nights, total, fee, channel, paidOn?} — the guest sleeps
-   the nights from `from` up to (not including) the checkout day */
+/* a booking: {from:'YYYY-MM-DD', nights, total, fee, channel, pays:[{amount,date,acct,pre?}]} — the guest
+   sleeps the nights from `from` up to (not including) the checkout day. Payments are what actually
+   arrived (a deposit, then the rest); `pre` marks money received before the app was in use, already
+   inside the opening balance. Older bookings carry a single `paidOn` instead of `pays`. */
 const stayNet=st=>Math.max(0,(st.total||0)-(st.fee||0));
+const stayPaid=st=>st.pays?st.pays.reduce((s,p)=>s+p.amount,0):(st.paidOn?stayNet(st):0);
+const stayLeft=st=>Math.max(0,stayNet(st)-stayPaid(st));
 const stayOut=st=>iso(addDays(parseISO(st.from),Math.max(1,st.nights|0)));
 /* nights of the stay that fall in month `mk` */
 function stayNightsIn(st,mk){
@@ -125,7 +129,8 @@ function stayNightsIn(st,mk){
 function staySummary(stays,mk){
   const out={nights:0,gross:0,fees:0,net:0,count:0,by:{},pending:0,pendingN:0};
   for(const st of stays){
-    if(!st.paidOn){ out.pending+=stayNet(st); out.pendingN++; }
+    const left=stayLeft(st);
+    if(left>0.005){ out.pending+=left; out.pendingN++; }
     const n=stayNightsIn(st,mk); if(!n) continue;
     const share=n/Math.max(1,st.nights|0);
     out.count++; out.nights+=n;
@@ -775,5 +780,5 @@ function checkBackup(d){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,debtFlows,stayNet,stayOut,stayNightsIn,staySummary,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
+  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayOut,stayNightsIn,staySummary,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,CAT_WORDS,checkBackup};

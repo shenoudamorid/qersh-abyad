@@ -270,6 +270,17 @@ test('nightly stays', async t => {
     assert.equal(s.net, 850 + 1600 + 3400); assert.equal(s.fees, 150 + 600);
     assert.equal(s.pending, 3400); assert.equal(s.pendingN, 1);
   });
+  await t.test('deposits: paid and left', () => {
+    const dep = { from: '2026-10-03', nights: 3, total: 1500, fee: 0, channel: 'direct',
+      pays: [{ amount: 500, date: '2026-09-29', acct: 'bank', pre: true }] };
+    assert.equal(L.stayPaid(dep), 500); assert.equal(L.stayLeft(dep), 1000);
+    const s = L.staySummary([dep], '2026-10');
+    assert.equal(s.pending, 1000); assert.equal(s.pendingN, 1); assert.equal(s.net, 1500);
+    dep.pays.push({ amount: 1000, date: '2026-10-03', acct: 'cash' });
+    assert.equal(L.stayLeft(dep), 0); assert.equal(L.staySummary([dep], '2026-10').pending, 0);
+    assert.equal(L.stayPaid({ total: 800, paidOn: '2026-10-01' }), 800);  // older single-payment bookings
+    assert.equal(L.stayPaid({ total: 800 }), 0);
+  });
   await t.test('backups with stays', () => {
     const base = { tx: [], cats: [] };
     assert.equal(L.checkBackup({ ...base, stay: [{ id: 'a', ...st }] }), '');
