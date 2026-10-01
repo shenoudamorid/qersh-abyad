@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="مصاريفي">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -528,9 +529,10 @@ const acctOpts=sel=>{
   return list.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.emoji} ${esc(a.name)}${a.archived?' (مقفول)':''}</option>`).join('');
 };
 const defAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]||{id:''}).id;
-/* taking `amt` out of account `id` would leave it negative: ask before going ahead */
+/* taking `amt` out of a cash account would leave it negative: ask before going ahead.
+   Bank / card accounts can legitimately go below zero (credit cards), so they don't ask. */
 const okToTake=(id,amt,before=0)=>{
-  if(!id) return true;
+  if(!id || acctOf(id).type!=='cash') return true;
   const after=balance(id)+before-amt;
   return after>=-0.005 || confirm(`${acctOf(id).name} فيه ${money(balance(id)+before)} بس، وهيبقى بالسالب (${money(after)}). تكمل؟`);
 };
@@ -871,7 +873,7 @@ $('#quick').addEventListener('click',async e=>{
   await commit({kind:S.draft.kind,amount:q.amount,cat:q.cat,acct:q.acct,note:q.note||'',date:today()});
 });
 
-async function commit(t){
+async function commit(t,onUndo){
   const rec={id:uid(),at:Date.now(),...t};
   await Store.put('tx',rec);
   const mk=mKey(rec.date), c=rec.kind==='exp'?catOf(rec.cat):null;
@@ -885,7 +887,9 @@ async function commit(t){
   const sign=(rec.kind==='inc'||rec.kind==='ref')?'+':'';
   toast(`${label} <span class="a">${sign}${money(rec.amount)}</span> ${esc(S.settings.cur)}${warn}`,
     async()=>{ await Store.del('tx',rec.id); S.tx=S.tx.filter(x=>x.id!==rec.id);
-      renderRail(); renderQuick(); renderAccts(); toast('اتراجعنا'); });
+      if(onUndo) await onUndo();
+      renderRail(); renderQuick(); renderAccts(); renderLog(); toast('اتراجعنا'); });
+  return rec;
   renderRail(); renderQuick(); renderAccts(); renderReadout();
 }
 
@@ -1706,6 +1710,7 @@ function planSheet(id){
     </div></div>
     <div class="f"><label>التصنيف</label><select id="pC">
       ${catsOf('exp').map(c=>`<option value="${c.id}" ${c.id===p.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
+    ${id?`<div class="f"><label>لما يتدفع، هيتدفع منين؟</label><select id="pV">${acctOpts(defAcct())}</select></div>`:''}
     <div class="acts">
       ${id?'<button class="del" id="pDel">حذف</button><button class="go" id="pPay">اتدفع — سجّله</button>'
           :'<button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="pOk">حفظ</button>'}
@@ -1721,9 +1726,14 @@ function planSheet(id){
   };
   const pay=$('#pPay');
   if(pay) pay.onclick=async()=>{
-    p.done=true; await Store.put('plan',p);
+    /* pay what the form shows now, even if the edits weren't saved first */
+    const n=$('#pN').value.trim()||p.name, a=Number($('#pA').value);
+    if(!(a>0)){ $('#pA').focus(); return; }
+    if(!okToTake($('#pV').value,a)) return;
+    Object.assign(p,{name:n,amount:a,cat:$('#pC').value,done:true}); await Store.put('plan',p);
     closeSheet();
-    await commit({kind:'exp',amount:p.amount,cat:p.cat,acct:S.draft.acct,note:p.name,date:today()});
+    await commit({kind:'exp',amount:a,cat:p.cat,acct:$('#pV').value,note:n,date:today()},
+      async()=>{ p.done=false; await Store.put('plan',p); renderWal(); });
     renderWal();
   };
   const d=$('#pDel');
@@ -1863,10 +1873,17 @@ function togglePay(key){
   const r=S.rents.find(x=>x.id===id); if(!r) return;
   const cur=esc(S.settings.cur), got=rentPaid(r,m), left=r.amount-got;
   const head=`<h2>إيجار ${monthLabel(m)}</h2><p class="lede">${esc(r.tenant)}${r.unit?' — '+esc(r.unit):''}</p>`;
+  /* income this month's collection logged, still in the log */
+  const logged=()=>((r.txs||{})[m]||[]).map(i=>S.tx.find(t=>t.id===i)).filter(Boolean);
   const unmark=async()=>{
+    const inc=logged();
+    if(inc.length && !confirm(`هيتمسح كمان الدخل اللي اتسجل (${money(sum(inc))} ${S.settings.cur}). تكمل؟`)) return;
+    for(const t of inc){ await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id); }
     r.paid=(r.paid||[]).filter(x=>x!==m);
     if(r.part) delete r.part[m];
-    await Store.put('rent',r); closeSheet(); renderWal(); toast('اترجع غير محصّل');
+    if(r.txs) delete r.txs[m];
+    await Store.put('rent',r); closeSheet(); renderWal(); renderRail(); renderAccts(); renderLog();
+    toast('اترجع غير محصّل');
   };
   if(!left){
     sheet(`${head}<div class="kv big"><span>اتحصّل بالكامل</span><b style="color:var(--mint)">${money(r.amount)} ${cur}</b></div>
@@ -1877,10 +1894,11 @@ function togglePay(key){
   sheet(`${head}
     ${got?`<div class="kv"><span>اتحصّل قبل كده</span><b style="color:var(--mint)">${money(got)} ${cur}</b></div><div class="perf"></div>`:''}
     <div class="kv big"><span>فاضل</span><b>${money(left)} ${cur}</b></div>
-    <div class="f" style="margin-top:14px"><label>المبلغ اللي استلمته</label>
-      <input id="ryAmt" type="number" inputmode="decimal" step="0.01" value="${left}"></div>
-    <div class="f"><label>استلمته في أنهي حساب؟</label><select id="ryAcct">
-      ${liveAccts().map(a=>`<option value="${a.id}">${a.emoji} ${esc(a.name)}</option>`).join('')}</select></div>
+    <div class="f" style="margin-top:14px"><div class="row2">
+      <div><label>المبلغ اللي استلمته</label><input id="ryAmt" type="number" inputmode="decimal" step="0.01" value="${left}"></div>
+      <div><label>استلمته يوم</label><input id="ryD" type="date" value="${today()}"></div>
+    </div></div>
+    <div class="f"><label>استلمته في أنهي حساب؟</label><select id="ryAcct">${acctOpts(defAcct())}</select></div>
     <label class="chk"><input type="checkbox" id="ryRec" checked><span>سجّله دخل في الحساب ده</span></label>
     <div class="acts">${got?'<button class="del" id="ryUn">امسح المحصّل</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="ryOk">سجّل</button></div>`);
@@ -1889,12 +1907,20 @@ function togglePay(key){
     const a=Number($('#ryAmt').value);
     if(!(a>0) || a>left+0.005){ $('#ryAmt').focus(); return toast(`المبلغ لازم يكون أكبر من 0 ولحد ${money(left)}`); }
     const acct=$('#ryAcct').value, rec=$('#ryRec').checked, full=a>=left-0.005;
+    const before={paid:(r.paid||[]).slice(),part:{...(r.part||{})}};
     if(full){ r.paid=[...(r.paid||[]).filter(x=>x!==m),m]; if(r.part) delete r.part[m]; }
     else r.part={...(r.part||{}),[m]:got+a};
     await Store.put('rent',r);
     closeSheet(); renderWal();
-    if(rec) await commit({kind:'inc',amount:a,cat:r.cat,acct,
-      note:`إيجار ${monthLabel(m)} — ${r.tenant}${full&&!got?'':' (جزء)'}`,date:rentDueDate(r,m)});
+    /* dated the day it came in, so balances and reconciliations line up; the note names the month */
+    if(rec){
+      const t=await commit({kind:'inc',amount:a,cat:r.cat,acct,
+        note:`إيجار ${monthLabel(m)} — ${r.tenant}${full&&!got?'':' (جزء)'}`,date:$('#ryD').value||today()},
+        async()=>{ Object.assign(r,before); r.txs[m]=(r.txs[m]||[]).filter(i=>i!==t.id);
+          await Store.put('rent',r); renderWal(); });
+      r.txs={...(r.txs||{}),[m]:[...((r.txs||{})[m]||[]),t.id]};
+      await Store.put('rent',r);
+    }
     else toast(full?'اتحصّل بالكامل':`اتحصّل ${money0(got+a)} من ${money0(r.amount)}`);
     renderWal();
   };
@@ -2183,7 +2209,7 @@ function importJson(){
     try{ d=JSON.parse(await f.text()); }catch(e){ return toast('الملف مش صالح'); }
     if(checkBackup(d)) return toast('الملف مش صالح');
     if(!confirm('الاسترجاع هيمسح البيانات الحالية ويحل مكانها. هنحفظلك نسخة من بياناتك الحالية الأول. تكمل؟')) return;
-    if(S.tx.length) download(`masareef-before-restore-${today()}.json`,backupJson(),'application/json');
+    if(S.tx.length||S.debts.length||S.rents.length||S.plans.length||S.recur.length) download(`masareef-before-restore-${today()}.json`,backupJson(),'application/json');
 
     let accts=d.acct||[];
     if(!accts.length) accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
@@ -2216,7 +2242,7 @@ function importJson(){
     S.draft.acct=liveAccts()[0].id;
     S.draft.toAcct=(liveAccts()[1]||liveAccts()[0]).id;
     applyTheme(); applyMode();
-    renderAccts(); renderCats(); renderQuick(); renderSet(); renderRail(); renderReadout();
+    renderAccts(); renderCats(); renderQuick(); renderSet(); renderRail(); renderReadout(); renderLog(); renderWal();
     toast('اترجعت البيانات');
   };
   i.click();
