@@ -521,6 +521,14 @@ const catOf=id=>S.cats.find(c=>c.id===id)||{id:'',emoji:'💠',name:'بدون ت
 const acctOf=id=>S.accts.find(a=>a.id===id)||{id:'',emoji:'💠',name:'—',type:'cash',opening:0};
 const catsOf=k=>S.cats.filter(c=>c.kind===(k==='ref'?'exp':k));
 const liveAccts=()=>S.accts.filter(a=>!a.archived);
+/* live accounts, plus the selected one even if it's closed so editing never silently moves it */
+const acctOpts=sel=>{
+  const list=liveAccts().slice(), own=S.accts.find(a=>a.id===sel);
+  if(own&&own.archived) list.push(own);
+  return list.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.emoji} ${esc(a.name)}${a.archived?' (مقفول)':''}</option>`).join('');
+};
+const defAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]||{id:''}).id;
+const viaLabel=id=>{ const a=S.accts.find(x=>x.id===id); return a?`${a.emoji} ${esc(a.name)}`:''; };
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ccyOf=code=>S.settings.currencies.find(c=>c.code===code);
 const sortTx=()=>S.tx.sort((a,b)=> b.date.localeCompare(a.date) || b.at-a.at );
@@ -538,8 +546,11 @@ const sum=a=>a.reduce((s,t)=>s+t.amount,0);
 const expNet=k=>sum(inMonth(k,'exp'))-sum(inMonth(k,'ref'));
 const incNet=k=>sum(inMonth(k,'inc'));
 
+/* every account movement that isn't a tx: debts lent, borrowed and repaid */
+const debtMoves=()=>S.debts.flatMap(debtFlows);
 function balance(id){
-  return S.tx.reduce((b,t)=>b+txDelta(t,id),acctOf(id).opening||0);
+  return S.tx.reduce((b,t)=>b+txDelta(t,id),acctOf(id).opening||0)
+    +debtMoves().reduce((b,f)=>b+(f.acct===id?f.amount:0),0);
 }
 const netWorth=()=>liveAccts().reduce((s,a)=>s+balance(a.id),0);
 
@@ -1116,11 +1127,6 @@ function editTx(id){
      otherwise saving silently converts a transfer to an expense or moves it to another account */
   const kinds=kindList().includes(t.kind)?kindList():[...kindList(),t.kind];
   const kOpts=kinds.map(k=>`<option value="${k}" ${t.kind===k?'selected':''}>${KINDS[k].label}</option>`).join('');
-  const acctOpts=sel=>{
-    const list=liveAccts().slice(), own=S.accts.find(a=>a.id===sel);
-    if(own&&own.archived) list.push(own);
-    return list.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.emoji} ${esc(a.name)}${a.archived?' (مقفول)':''}</option>`).join('');
-  };
   sheet(`<h2>تعديل ${KINDS[t.kind].label}</h2>
     ${t.ccy?`<p class="lede">مسجّل بـ ${money(t.raw)} ${esc(t.ccy)} بسعر ${t.rate}. التعديل بالعملة الأساسية.</p>`:''}
     <div class="f"><div class="row2">
@@ -1404,7 +1410,8 @@ function lastRecon(acct){
 function expectedFor(acct){
   const L=lastRecon(acct);
   if(!L) return null;
-  const d=S.tx.filter(t=>afterRecon(t,L)).reduce((s,t)=>s+txDelta(t,acct),0);
+  const d=S.tx.filter(t=>afterRecon(t,L)).reduce((s,t)=>s+txDelta(t,acct),0)
+    +debtMoves().filter(f=>f.acct===acct&&afterRecon(f,L)).reduce((s,f)=>s+f.amount,0);
   return {base:L.cash, from:L.date, delta:d, expected:L.cash+d};
 }
 function reconCard(mk){
@@ -1548,7 +1555,7 @@ function walDebt(){
   const rows=list=>list.map(d=>{
     const late=d.due&&d.due<today();
     return `<button class="item" data-debt="${d.id}"><em>${d.dir==='out'?'↗':'↘'}</em>
-      <span class="nm">${esc(d.person)}<small>${dayLabel(d.date)}${d.note?' · '+esc(d.note):''}${d.due?` · موعد ${dayLabel(d.due)}`:''}${late?' ⚠':''}${debtPaid(d)?` · اتدفع ${money0(debtPaid(d))} من ${money0(d.amount)}`:''}</small></span>
+      <span class="nm">${esc(d.person)}<small>${dayLabel(d.date)}${d.acct?' · '+viaLabel(d.acct):''}${d.note?' · '+esc(d.note):''}${d.due?` · موعد ${dayLabel(d.due)}`:''}${late?' ⚠':''}${debtPaid(d)?` · اتدفع ${money0(debtPaid(d))} من ${money0(d.amount)}`:''}</small></span>
       <span class="hint" style="color:${late?'var(--red)':d.dir==='out'?'var(--mint)':'var(--chalk)'}">${money0(debtLeft(d))}</span>
       <span class="chev">‹</span></button>`;}).join('<div class="perf"></div>');
   return `<div class="duo">
@@ -1556,7 +1563,7 @@ function walDebt(){
       <div class="box inn"><div class="v">${money0(sI)}</div><div class="l">عليّ للناس</div></div></div>
     <div class="banner" style="text-align:center">الصافي
       <b class="num" style="color:${sO-sI>=0?'var(--mint)':'var(--red)'}">${sO-sI>=0?'+':''}${money0(sO-sI)} ${cur}</b><br>
-      <span style="color:var(--dim);font-size:12px">السلف منفصلة عن حساب الشهر ومش داخلة في إجمالي فلوسك</span></div>
+      <span style="color:var(--dim);font-size:12px">السلف مش داخلة في دخل ومصروف الشهر، بس بتحرّك رصيد الحساب اللي اخترته</span></div>
     ${out.length?`<div class="sec"><h2>ليّ عند الناس</h2><div class="list">${rows(out)}</div></div>`:''}
     ${inn.length?`<div class="sec"><h2>عليّ للناس</h2><div class="list">${rows(inn)}</div></div>`:''}
     ${!S.debts.length?`<div class="empty"><div class="h">مفيش سلف مسجّلة</div>
@@ -1644,7 +1651,7 @@ function acctSheet(id){
   };
   const d=$('#aD');
   if(d) d.onclick=async()=>{
-    const used=S.tx.filter(t=>t.acct===id||t.toAcct===id).length;
+    const used=S.tx.filter(t=>t.acct===id||t.toAcct===id).length+debtMoves().filter(f=>f.acct===id).length;
     if(used){ toast(`فيه ${used} حركة على الحساب ده — اقفله بدل ما تحذفه`); return; }
     await Store.del('acct',id); S.accts=S.accts.filter(x=>x.id!==id);
     if(S.draft.acct===id) S.draft.acct=liveAccts()[0].id;
@@ -1689,7 +1696,7 @@ function planSheet(id){
 }
 
 function debtSheet(id){
-  const d=id?S.debts.find(x=>x.id===id):{person:'',amount:'',dir:'out',date:today(),due:'',note:''};
+  const d=id?S.debts.find(x=>x.id===id):{person:'',amount:'',dir:'out',date:today(),due:'',note:'',acct:defAcct()};
   sheet(`<h2>${id?'تفاصيل السلفة':'سلفة جديدة'}</h2>
     <div class="f"><label>النوع</label><select id="dDir">
       <option value="out" ${d.dir==='out'?'selected':''}>أنا سلّفت — ليّ عنده</option>
@@ -1699,25 +1706,28 @@ function debtSheet(id){
       <div><label>المبلغ</label><input id="dA" type="number" inputmode="decimal" step="0.01" value="${d.amount}"></div>
       <div><label>التاريخ</label><input id="dD" type="date" value="${d.date}"></div>
     </div></div>
+    <div class="f"><label id="dVl">${d.dir==='in'?'استلمتها':'اديتها'} عن طريق</label><select id="dV">
+      ${acctOpts(d.acct)}<option value="" ${d.acct?'':'selected'}>بدون حساب — مش بيأثر على الرصيد</option></select></div>
     <div class="f"><label>موعد السداد (اختياري)</label><input id="dU" type="date" value="${d.due||''}"></div>
     <div class="f"><label>ملاحظة</label><input id="dN" maxlength="60" value="${esc(d.note||'')}"></div>
     ${id&&(d.pays||[]).length?`<div class="striplbl" style="padding:4px 0 6px">دفعات (${money0(debtPaid(d))} من ${money0(d.amount)})</div>
-      ${d.pays.map((p,i)=>`<div class="kv"><span>${dayLabel(p.date)}</span><b>${money0(p.amount)} ${esc(S.settings.cur)}
+      ${d.pays.map((p,i)=>`<div class="kv"><span>${dayLabel(p.date)}${p.acct?' · '+viaLabel(p.acct):''}</span><b>${money0(p.amount)} ${esc(S.settings.cur)}
         <button data-dp="${i}" aria-label="امسح الدفعة" style="color:var(--red);padding:0 6px">✕</button></b></div>`).join('<div class="perf"></div>')}`:''}
     ${id?`<div class="acts"><button class="del" id="dDel">حذف</button>
       <button class="go" id="dSet">${d.settledAt?'رجّعها غير مسدّدة':'تم السداد'}</button></div>
       <div class="acts" style="margin-top:9px">${d.settledAt?'':'<button class="no" id="dPart">سداد جزء</button>'}<button class="no" id="dOk">حفظ التعديل</button></div>`
     :`<div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="dOk">حفظ</button></div>`}`);
+  $('#dDir').onchange=e=>{ $('#dVl').textContent=(e.target.value==='in'?'استلمتها':'اديتها')+' عن طريق'; };
   $('#dOk').onclick=async()=>{
     const a=Number($('#dA').value), p=$('#dP').value.trim();
     if(!p){ $('#dP').focus(); return; }
     if(!(a>0)){ $('#dA').focus(); return; }
     const v={person:p,amount:a,dir:$('#dDir').value,date:$('#dD').value||today(),
-      due:$('#dU').value||'',note:$('#dN').value.trim()};
+      due:$('#dU').value||'',note:$('#dN').value.trim(),acct:$('#dV').value};
     if(id){ Object.assign(d,v); if(!d.settledAt && debtPaid(d)>=d.amount) d.settledAt=today(); await Store.put('debt',d); }
-    else{ const nd={id:uid(),...v,settledAt:'',pays:[]}; S.debts.push(nd); await Store.put('debt',nd); }
-    closeSheet(); renderWal(); toast('تم');
+    else{ const nd={id:uid(),...v,at:Date.now(),settledAt:'',pays:[]}; S.debts.push(nd); await Store.put('debt',nd); }
+    closeSheet(); debtChanged(); toast(!id&&v.acct?`تم — ${v.dir==='out'?'اتخصم من':'اتضاف لـ'} ${esc(acctOf(v.acct).name)}`:'تم');
   };
   const ds=$('#dSet');
   if(ds) ds.onclick=async()=>{
@@ -1725,43 +1735,50 @@ function debtSheet(id){
       d.settledAt='';
       /* if the last payment is what closed it, reopening takes that payment back */
       if(debtPaid(d)>=d.amount && (d.pays||[]).length) d.pays=d.pays.slice(0,-1);
-    }else d.settledAt=today();
-    await Store.put('debt',d);
-    closeSheet(); renderWal(); toast(d.settledAt?'اتسجلت مسدّدة':'رجعت غير مسدّدة'); };
+      await Store.put('debt',d);
+      closeSheet(); debtChanged(); toast('رجعت غير مسدّدة'); return;
+    }
+    /* settling records the remainder as a payment, so we know how it came back */
+    closeSheet(); setTimeout(()=>debtPaySheet(id,true),120); };
   $('#sheet').querySelectorAll('[data-dp]').forEach(x=>x.onclick=async()=>{
     d.pays=d.pays.filter((_,i)=>i!==+x.dataset.dp);
     if(d.settledAt && debtPaid(d)<d.amount) d.settledAt='';
-    await Store.put('debt',d); closeSheet(); renderWal(); toast('اتمسحت الدفعة');
+    await Store.put('debt',d); closeSheet(); debtChanged(); toast('اتمسحت الدفعة');
     setTimeout(()=>debtSheet(id),120);
   });
   const dp=$('#dPart');
   if(dp) dp.onclick=()=>{ closeSheet(); setTimeout(()=>debtPaySheet(id),120); };
   const dd=$('#dDel');
-  if(dd) dd.onclick=async()=>{ if(!confirm('حذف السلفة دي؟')) return;
+  if(dd) dd.onclick=async()=>{ if(!confirm(debtFlows(d).length?'حذف السلفة دي؟ الرصيد هيرجع كأنها متسجلتش.':'حذف السلفة دي؟')) return;
     await Store.del('debt',id); S.debts=S.debts.filter(x=>x.id!==id);
-    closeSheet(); renderWal(); toast('اتحذف'); };
+    closeSheet(); debtChanged(); toast('اتحذف'); };
+}
+function debtChanged(){ renderAccts(); renderRail(); renderWal();
 }
 
-function debtPaySheet(id){
+function debtPaySheet(id,full){
   const d=S.debts.find(x=>x.id===id); if(!d) return;
   const left=debtLeft(d), cur=esc(S.settings.cur);
-  sheet(`<h2>سداد جزء — ${esc(d.person)}</h2>
-    <p class="lede">${d.dir==='out'?'رجّع لك جزء من السلفة':'رجّعت جزء من اللي عليك'}.</p>
+  sheet(`<h2>${full?'تم السداد':'سداد جزء'} — ${esc(d.person)}</h2>
+    <p class="lede">${full?(d.dir==='out'?'رجّع لك الباقي':'رجّعت الباقي'):(d.dir==='out'?'رجّع لك جزء من السلفة':'رجّعت جزء من اللي عليك')}.</p>
     <div class="kv big"><span>فاضل</span><b>${money(left)} ${cur}</b></div>
     <div class="f" style="margin-top:14px"><div class="row2">
-      <div><label>المبلغ</label><input id="ppA" type="number" inputmode="decimal" step="0.01" placeholder="${left}"></div>
+      <div><label>المبلغ</label><input id="ppA" type="number" inputmode="decimal" step="0.01" placeholder="${left}" value="${full?Math.round(left*100)/100:''}"></div>
       <div><label>التاريخ</label><input id="ppD" type="date" value="${today()}"></div>
     </div></div>
+    <div class="f"><label>${d.dir==='out'?'استلمتها':'دفعتها'} عن طريق</label><select id="ppV">${acctOpts(d.acct)}<option value="" ${d.acct?'':'selected'}>بدون حساب — مش بيأثر على الرصيد</option></select></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="ppOk">سجّل</button></div>`);
   $('#ppOk').onclick=async()=>{
     const a=Number($('#ppA').value);
     if(!(a>0) || a>left+0.005){ $('#ppA').focus(); return toast(`المبلغ لازم يكون أكبر من 0 ولحد ${money(left)}`); }
     const date=$('#ppD').value||today();
-    d.pays=[...(d.pays||[]),{date,amount:a}];
+    const via=$('#ppV').value;
+    d.pays=[...(d.pays||[]),{date,amount:a,acct:via,at:Date.now()}];
     if(debtPaid(d)>=d.amount-0.005) d.settledAt=date;
     await Store.put('debt',d);
-    closeSheet(); renderWal();
-    toast(d.settledAt?'اتسددت بالكامل':`فاضل ${money0(debtLeft(d))} ${cur}`);
+    closeSheet(); debtChanged();
+    toast((d.settledAt?'اتسددت بالكامل':`فاضل ${money0(debtLeft(d))} ${cur}`)
+      +(via?` · ${d.dir==='out'?'اتضاف لـ':'اتخصم من'} ${esc(acctOf(via).name)}`:''));
   };
 }
 
@@ -2094,8 +2111,9 @@ function exportCsv(){
   csv+='\n\n'+['الحسابات','الاسم','النوع','الرصيد'].map(q).join(',')+'\n'+
        S.accts.map(a=>['',a.name,a.type==='cash'?'كاش':'بنك',balance(a.id)].map(q).join(',')).join('\n');
   if(S.debts.length)
-    csv+='\n\n'+['السلف','الاسم','الاتجاه','المبلغ','التاريخ','موعد السداد','سُدّدت','ملاحظة','المسدّد'].map(q).join(',')+'\n'+
-      S.debts.map(d=>['',d.person,d.dir==='out'?'ليّ عنده':'عليّ له',d.amount,d.date,d.due||'',d.settledAt||'',d.note||'',debtPaid(d)||''].map(q).join(',')).join('\n');
+    csv+='\n\n'+['السلف','الاسم','الاتجاه','المبلغ','التاريخ','موعد السداد','سُدّدت','ملاحظة','المسدّد','الطريقة','طرق السداد'].map(q).join(',')+'\n'+
+      S.debts.map(d=>['',d.person,d.dir==='out'?'ليّ عنده':'عليّ له',d.amount,d.date,d.due||'',d.settledAt||'',d.note||'',debtPaid(d)||'',d.acct?acctOf(d.acct).name:'',
+        [...new Set((d.pays||[]).filter(p=>p.acct).map(p=>acctOf(p.acct).name))].join(' / ')].map(q).join(',')).join('\n');
   if(S.rents.length)
     csv+='\n\n'+['الإيجارات','الساكن','الوحدة','الإيجار','شهور محصّلة','محصّل جزئياً'].map(q).join(',')+'\n'+
       S.rents.map(r=>['',r.tenant,r.unit||'',r.amount,(r.paid||[]).join(' '),

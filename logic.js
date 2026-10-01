@@ -100,6 +100,14 @@ const rentDueDate=(r,m)=>`${m}-${String(Math.min(r.dueDay||1,dim(+m.slice(0,4),+
 /* ═══════ debts ═══════ */
 const debtPaid=d=>(d.pays||[]).reduce((s,p)=>s+p.amount,0);
 const debtLeft=d=>d.settledAt?0:Math.max(0,d.amount-debtPaid(d));
+/* money a debt moved through accounts: lending takes it out, borrowing brings it in,
+   and each repayment goes the other way. No account = recorded only, balances untouched. */
+function debtFlows(d){
+  const s=d.dir==='out'?-1:1, out=[];
+  if(d.acct) out.push({acct:d.acct,date:d.date,at:d.at,amount:s*d.amount});
+  for(const p of (d.pays||[])) if(p.acct) out.push({acct:p.acct,date:p.date,at:p.at,amount:-s*p.amount});
+  return out;
+}
 
 /* ═══════ what's due ═══════ */
 /* open debts, upcoming expenses and unpaid rent that are late or due within `days` */
@@ -219,5 +227,5 @@ function checkBackup(d){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
+  debtPaid,debtLeft,debtFlows,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,checkBackup};
