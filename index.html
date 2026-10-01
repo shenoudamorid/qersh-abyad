@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>مصاريفي</title>
+<title>قرش أبيض</title>
 <meta name="theme-color" content="#0B0E11" id="themeMeta">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="مصاريفي">
+<meta name="apple-mobile-web-app-title" content="قرش أبيض">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -830,7 +830,7 @@ async function bioCheck(){
 async function bioCreate(){
   try{
     const c=await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),
-      rp:{name:'مصاريفي'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'masareef',displayName:'مصاريفي'},
+      rp:{name:'قرش أبيض'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'masareef',displayName:'قرش أبيض'},
       pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],timeout:60000,
       authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'discouraged'}}});
     return c?b64(c.rawId):'';
@@ -903,7 +903,9 @@ function lockSheet(){
 }
 
 function welcome(){
-  sheet(`<h2>أهلاً في مصاريفي 👋</h2>
+  sheet(`<div style="text-align:center;margin:2px 0 14px"><img src="icon-192.png" alt="" style="width:76px;height:76px;border-radius:19px;box-shadow:0 10px 26px color-mix(in srgb,var(--brand) 30%,transparent)">
+      <h2 style="margin:12px 0 2px">أهلاً في قرش أبيض 👋</h2>
+      <div style="font-size:12.5px;color:var(--dim)">القرش الأبيض ينفع في اليوم الإسود</div></div>
     <p class="lede">سجّل أي مصروف في تلات دوسات:</p>
     <div class="list" style="margin-bottom:14px">
       <div class="item"><em style="--t:var(--brand)">١</em><span class="nm">اكتب المبلغ من الأرقام</span></div><div class="perf"></div>
@@ -1743,7 +1745,7 @@ function printReport(mk){
   const sm=staySummary(S.stays,mk), us=stayUnits();
   const stays=S.stays.filter(st=>stayNightsIn(st,mk)).sort((a,b)=>a.from.localeCompare(b.from));
   $('#printArea').innerHTML=`<h1>تقرير ${monthLabel(mk)}</h1>
-    <div class="meta">مصاريفي · اتعمل ${dayLabel(today())} · المبالغ بالـ ${cur}</div>
+    <div class="meta">قرش أبيض · اتعمل ${dayLabel(today())} · المبالغ بالـ ${cur}</div>
     <div class="kpis"><div>الدخل<b>${money(I)}</b></div><div>المصاريف<b>${money(E)}</b></div><div>الصافي<b>${I-E>=0?'+':''}${money(I-E)}</b></div></div>
     ${ec.length?`<h2>المصاريف بالتصنيف</h2>${catTable(ec,E,true)}`:''}
     ${ic.length?`<h2>الدخل بالتصنيف</h2>${catTable(ic,I,false)}`:''}
@@ -1763,7 +1765,7 @@ function printReport(mk){
       ${txs.map(t=>`<tr><td>${+t.date.slice(8)} ${AR_M3[+t.date.slice(5,7)-1]}</td><td>${KINDS[t.kind].label}</td>
         <td>${t.kind==='trf'?'→ '+esc(acctOf(t.toAcct).name):esc(catOf(t.cat).name)}</td><td>${esc(acctOf(t.acct).name)}</td>
         <td>${esc(t.note||'')}</td><td class="n">${t.kind==='inc'||t.kind==='ref'?'+':''}${money(t.amount)}</td></tr>`).join('')}</table>`;
-  const prev=document.title; document.title=`مصاريفي — ${monthLabel(mk)}`;
+  const prev=document.title; document.title=`قرش أبيض — ${monthLabel(mk)}`;
   setTimeout(()=>{ window.print(); document.title=prev; },60);
 }
 $('#repPdf').addEventListener('click',()=>printReport(S.repMonth||today().slice(0,7)));
@@ -2841,13 +2843,13 @@ function exportCsv(){
     csv+='\n\n'+['الحجوزات','الوحدة','الضيف','الوصول','الليالي','الإجمالي','العمولة','الصافي','المصدر','المدفوع','الباقي','الدفعات'].map(q).join(',')+'\n'+
       S.stays.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(st=>['',st.unit||'',st.guest||'',st.from,st.nights,st.total,st.fee||0,stayNet(st),
         CH[st.channel].name,stayPaid(st),stayLeft(st),(st.pays||[]).map(p=>`${p.date} ${p.amount} ${acctOf(p.acct).name}`).join(' / ')].map(q).join(',')).join('\n');
-  download(`masareef-${today()}.csv`,csv,'text/csv;charset=utf-8');
+  download(`qersh-abyad-${today()}.csv`,csv,'text/csv;charset=utf-8');
   toast('اتصدر ملف CSV');
 }
 const backupJson=()=>JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
   tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents,stay:S.stays,goal:S.goals});
 async function exportJson(){
-  const name=`masareef-backup-${today()}.json`, text=backupJson();
+  const name=`qersh-abyad-backup-${today()}.json`, text=backupJson();
   /* on phones the share sheet saves straight to Files / Drive / WhatsApp */
   let file=null;
   try{ file=new File([text],name,{type:'application/json'}); }catch(e){}
@@ -2866,7 +2868,7 @@ function importJson(){
     try{ d=JSON.parse(await f.text()); }catch(e){ return toast('الملف مش صالح'); }
     if(checkBackup(d)) return toast('الملف مش صالح');
     if(!confirm('الاسترجاع هيمسح البيانات الحالية ويحل مكانها. هنحفظلك نسخة من بياناتك الحالية الأول. تكمل؟')) return;
-    if(S.tx.length||S.debts.length||S.rents.length||S.stays.length||S.plans.length||S.recur.length) download(`masareef-before-restore-${today()}.json`,backupJson(),'application/json');
+    if(S.tx.length||S.debts.length||S.rents.length||S.stays.length||S.plans.length||S.recur.length) download(`qersh-abyad-before-restore-${today()}.json`,backupJson(),'application/json');
 
     let accts=d.acct||[];
     if(!accts.length) accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
