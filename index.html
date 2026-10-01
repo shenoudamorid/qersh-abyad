@@ -233,6 +233,9 @@ nav button.on{color:var(--gold)}
         border:1px solid color-mix(in srgb,var(--gold) 38%,transparent);
         border-radius:var(--r);padding:13px;font-size:13px;line-height:1.65;margin-top:16px}
 .banner b{color:var(--gold)}
+#memWarn{position:fixed;top:0;left:0;right:0;z-index:60;background:var(--red);color:#fff;
+         padding:calc(env(safe-area-inset-top) + 9px) 16px 9px;font-size:12.5px;line-height:1.6;text-align:center}
+#memWarn[hidden]{display:none}
 
 .duo{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
 .duo .box{background:var(--ink2);border-radius:var(--r);padding:14px;text-align:center}
@@ -403,6 +406,8 @@ nav button.on{color:var(--gold)}
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
 <div id="toast"></div>
+<div id="memWarn" role="alert" hidden>التخزين مش شغال — أي حاجة هتسجلها هتضيع لما تقفل التطبيق. اقفله وافتحه تاني.</div>
+<script src="logic.js"></script>
 <script>
 'use strict';
 
@@ -417,12 +422,44 @@ const Store = (() => {
       let idb; try{ idb=indexedDB; }catch(e){ idb=null; }
       if(!idb){ memInit(); return res(false); }
       let done=false;
-      const t=setTimeout(()=>{ if(!done){done=true;memInit();res(false);} },2500);
+      /* slow phones can take seconds to open the database — wait generously, and if it
+         opens after we gave up, move anything typed meanwhile into it and reload */
+      const t=setTimeout(()=>{ if(!done){done=true;memInit();res(false);} },10000);
       let rq; try{ rq=idb.open(NAME,VER); }catch(e){ clearTimeout(t); memInit(); return res(false); }
       rq.onupgradeneeded=e=>{ const d=e.target.result;
         STORES.forEach(s=>{ if(!d.objectStoreNames.contains(s)) d.createObjectStore(s,{keyPath:'id'}); }); };
-      rq.onsuccess=e=>{ if(done)return; done=true; clearTimeout(t); db=e.target.result; res(true); };
-      rq.onerror=rq.onblocked=()=>{ if(done)return; done=true; clearTimeout(t); memInit(); res(false); };
+      rq.onsuccess=e=>{
+        if(!done){ done=true; clearTimeout(t); db=e.target.result; return res(true); }
+        const late=e.target.result, tx=late.transaction(STORES,'readwrite');
+        STORES.forEach(s=>mem[s].forEach(v=>tx.objectStore(s).put(v)));
+        tx.oncomplete=()=>location.reload();
+      };
+      /* onblocked: another tab holds an older version — success follows once it closes */
+      rq.onerror=()=>{ if(done)return; done=true; clearTimeout(t); memInit(); res(false); };
+    });
+  }
+  /* ask the browser not to evict our data under storage pressure */
+  async function persist(){
+    try{
+      if(!navigator.storage||!navigator.storage.persist) return null;
+      return (await navigator.storage.persisted()) || (await navigator.storage.persist());
+    }catch(e){ return null; }
+  }
+  /* several writes in one transaction: all land or none do.
+     ops: ['put',store,value] | ['del',store,id] | ['clear',store] */
+  function batch(ops){
+    if(!ops.length) return Promise.resolve();
+    if(!db){
+      for(const [op,s,v] of ops){ if(op==='put') mem[s].set(v.id,v); else if(op==='del') mem[s].delete(v); else mem[s].clear(); }
+      return Promise.resolve();
+    }
+    return new Promise((res,rej)=>{
+      const tx=db.transaction([...new Set(ops.map(o=>o[1]))],'readwrite');
+      tx.oncomplete=()=>res();
+      tx.onerror=tx.onabort=()=>rej(tx.error);
+      /* a bad record throws synchronously — abort so the writes queued before it don't commit */
+      try{ for(const [op,s,v] of ops){ const st=tx.objectStore(s); if(op==='put') st.put(v); else if(op==='del') st.delete(v); else st.clear(); } }
+      catch(e){ try{ tx.abort(); }catch(_){} rej(e); }
     });
   }
   const t=(s,m)=>db.transaction(s,m).objectStore(s);
@@ -430,7 +467,7 @@ const Store = (() => {
   const put=(s,v)=>db?new Promise((res,rej)=>{const r=t(s,'readwrite').put(v);r.onsuccess=()=>res(v);r.onerror=()=>rej(r.error);}):(mem[s].set(v.id,v),Promise.resolve(v));
   const del=(s,id)=>db?new Promise((res,rej)=>{const r=t(s,'readwrite').delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);}):(mem[s].delete(id),Promise.resolve());
   const clear=s=>db?new Promise((res,rej)=>{const r=t(s,'readwrite').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error);}):(mem[s].clear(),Promise.resolve());
-  return {open,all,put,del,clear,get persistent(){return !!db}};
+  return {open,persist,batch,all,put,del,clear,get persistent(){return !!db}};
 })();
 
 /* ═══════ state ═══════ */
@@ -473,11 +510,8 @@ const money0=n=>nf.format(Math.round(n));
 const AR_DAYS=['الأحد','الاتنين','التلات','الأربع','الخميس','الجمعة','السبت'];
 const AR_MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const AR_M3=['ينا','فبر','مار','أبر','ماي','يون','يول','أغس','سبت','أكت','نوف','ديس'];
-const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const parseISO=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);};
 const mKey=s=>s.slice(0,7);
 const today=()=>iso(new Date());
-const dim=(y,m)=>new Date(y,m,0).getDate();
 const catOf=id=>S.cats.find(c=>c.id===id)||{id:'',emoji:'💠',name:'بدون تصنيف',kind:'exp',budget:0,fixed:false};
 const acctOf=id=>S.accts.find(a=>a.id===id)||{id:'',emoji:'💠',name:'—',type:'cash',opening:0};
 const catsOf=k=>S.cats.filter(c=>c.kind===(k==='ref'?'exp':k));
@@ -493,8 +527,6 @@ function dayLabel(s){
   return `${AR_DAYS[d.getDay()]} ${d.getDate()} ${AR_MONTHS[d.getMonth()]}`;
 }
 const monthLabel=k=>{const[y,m]=k.split('-').map(Number);return `${AR_MONTHS[m-1]} ${y}`;};
-const prevMonth=k=>{const[y,m]=k.split('-').map(Number);return iso(new Date(y,m-2,1)).slice(0,7);};
-const nextMonth=k=>{const[y,m]=k.split('-').map(Number);return iso(new Date(y,m,1)).slice(0,7);};
 const inMonth=(k,kind)=>S.tx.filter(t=>mKey(t.date)===k && (!kind||t.kind===kind));
 const sum=a=>a.reduce((s,t)=>s+t.amount,0);
 /* net expense for a month = expenses minus refunds */
@@ -502,12 +534,7 @@ const expNet=k=>sum(inMonth(k,'exp'))-sum(inMonth(k,'ref'));
 const incNet=k=>sum(inMonth(k,'inc'));
 
 function balance(id){
-  const a=acctOf(id); let b=a.opening||0;
-  for(const t of S.tx){
-    if(t.kind==='trf'){ if(t.acct===id) b-=t.amount; if(t.toAcct===id) b+=t.amount; }
-    else if(t.acct===id){ b += (t.kind==='inc'||t.kind==='ref') ? t.amount : -t.amount; }
-  }
-  return b;
+  return S.tx.reduce((b,t)=>b+txDelta(t,id),acctOf(id).opening||0);
 }
 const netWorth=()=>liveAccts().reduce((s,a)=>s+balance(a.id),0);
 
@@ -628,34 +655,42 @@ function applyMode(){
   lastDay=today();
   buildKeys(); applyMode(); renderAccts(); renderCats(); renderQuick(); renderRail(); renderReadout();
 
-  if(!Store.persistent) toast('التخزين مش متاح — البيانات مش هتتحفظ');
-  else if(backupDue()) setTimeout(()=>toast('عدّى شهر من غير نسخة احتياطية'),1200);
+  if(!Store.persistent){ $('#memWarn').hidden=false; return; }
+  persisted=await Store.persist();
+  const nag=backupNag(); if(nag) setTimeout(()=>toast(nag),1200);
 })();
 
-const backupDue=()=>S.tx.length>15 && (Date.now()-(S.settings.lastBackup||0) > 30*864e5);
+/* null = browser can't tell us, true/false = whether our data is safe from eviction */
+let persisted=null;
+
+/* backup reminder: a month without one, or 100+ entries logged since the last */
+function backupNag(){
+  if(S.tx.length<=15) return '';
+  const last=S.settings.lastBackup||0;
+  if(Date.now()-last>30*864e5) return 'عدّى شهر من غير نسخة احتياطية';
+  const n=S.tx.filter(t=>(t.at||0)>last).length;
+  return n>=100?`سجّلت ${n} حركة من آخر نسخة احتياطية`:'';
+}
 
 async function runRecurring(){
-  const now=new Date(), mk=iso(now).slice(0,7);
   /* catch up on months the app wasn't opened in, but never more than 12 back */
-  let floor=mk; for(let i=0;i<11;i++) floor=prevMonth(floor);
-  let n=0;
+  const now=new Date(), ops=[], made=[];
   for(const r of S.recur){
-    let k=r.lastMonth?nextMonth(r.lastMonth):mk;
-    if(k<floor) k=floor;
-    const start=r.lastMonth;
-    while(k<=mk){
-      const [y,m]=k.split('-').map(Number);
-      const day=Math.min(r.day,dim(y,m));
-      if(k===mk && now.getDate()<day) break;
+    const due=recurringDue(r,now);
+    if(!due.length) continue;
+    for(const d of due){
       const t={id:uid(),kind:r.kind||'exp',amount:r.amount,cat:r.cat,acct:r.acct,note:r.note||'',
-        date:iso(new Date(y,m-1,day)),at:Date.now(),auto:1};
-      await Store.put('tx',t); S.tx.push(t);
-      r.lastMonth=k; n++;
-      k=nextMonth(k);
+        date:d.date,at:Date.now(),auto:1};
+      ops.push(['put','tx',t]); made.push(t);
     }
-    if(r.lastMonth!==start) await Store.put('recur',r);
+    ops.push(['put','recur',{...r,lastMonth:due[due.length-1].month}]);
   }
-  if(n){ sortTx(); toast(`سُجّل <b>${n}</b> بند ثابت`); }
+  if(!ops.length) return;
+  /* posting and lastMonth land together, so a crash can't double-post or skip */
+  await Store.batch(ops);
+  for(const [,s,v] of ops) if(s==='recur') Object.assign(S.recur.find(r=>r.id===v.id),v);
+  S.tx.push(...made); sortTx();
+  toast(`سُجّل <b>${made.length}</b> بند ثابت`);
 }
 
 /* PWAs stay alive in the background for days — when resumed on a new day,
@@ -903,82 +938,9 @@ $('#noteBtn').addEventListener('click',()=>{
   };
 });
 
-/* ── natural language entry ── */
-const AR_DIGITS={'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9',
-                 '۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9'};
-const normDigits=s=>s.replace(/[٠-٩۰-۹]/g,d=>AR_DIGITS[d]);
-function norm(x){
-  return normDigits(String(x||''))
-    .replace(/[\u064B-\u0652\u0670\u0640]/g,'')
-    .replace(/[\u0623\u0625\u0622\u0671]/g,'\u0627')
-    .replace(/\u0629/g,'\u0647')
-    .replace(/\u0649/g,'\u064A')
-    .toLowerCase().trim();
-}
-const stripAl=w=>{ const n=norm(w); return n.length>4&&n.startsWith('\u0627\u0644')?n.slice(2):n; };
-const tokOf=x=>String(x||'').split(/[\s,\u060C.\u0640_-]+/).filter(Boolean);
-function tokMatch(a,b){
-  if(a.length<3||b.length<3) return a===b;
-  return a===b || a.startsWith(b) || b.startsWith(a);
-}
-const REF_W=['مرتجع','رجعت','استرجاع','مردود'];
-const INC_W=['دخل','قبضت','استلمت','مرتب','عموله','عمولات','ايجار','ارباح','حصلت'];
-function parseSentence(raw){
-  const s=normDigits(String(raw||''));
-  const m=s.match(/\d+(\.\d+)?/);
-  if(!m) return null;
-  const amount=Number(m[0]);
-  if(!(amount>0)) return null;
-  const toks=tokOf(s.slice(0,m.index)+' '+s.slice(m.index+m[0].length));
-  const keys=toks.map(stripAl);
-  const used=new Array(toks.length).fill(false);
-  const hasW=list=>keys.some((k,i)=>!used[i]&&list.some(w=>tokMatch(k,stripAl(w))));
-
-  /* score a set of named items against the unused tokens */
-  const score=(items,nameOf)=>{
-    let best=null,bs=0,bh=[];
-    for(const it of items){
-      const nt=tokOf(nameOf(it)).map(stripAl).filter(w=>w.length>=2);
-      if(!nt.length) continue;
-      let sc=0,hit=[];
-      for(const w of nt){
-        for(let i=0;i<keys.length;i++){
-          if(used[i]||hit.includes(i)) continue;
-          if(tokMatch(keys[i],w)){ sc+=w.length; hit.push(i); break; }
-        }
-      }
-      if(sc>bs){ bs=sc; best=it; bh=hit; }
-    }
-    return {best,score:bs,hit:bh};
-  };
-
-  /* accounts first — their names are the most distinctive */
-  const aM=score(liveAccts(),a=>a.name);
-  if(aM.best) aM.hit.forEach(i=>used[i]=true);
-
-  const refHit=PRO()&&hasW(REF_W), incHit=hasW(INC_W);
-  const eM=score(catsOf('exp'),c=>c.name);
-  const iM=score(catsOf('inc'),c=>c.name);
-  let kind;
-  if(refHit) kind='ref';
-  else if(iM.score>eM.score) kind='inc';
-  else if(eM.score>iM.score) kind='exp';
-  else kind=incHit?'inc':'exp';
-
-  const cM = kind==='inc'?iM:eM;
-  if(cM.best) cM.hit.forEach(i=>used[i]=true);
-
-  /* drop leftover trigger words from the note */
-  keys.forEach((k,i)=>{
-    if(used[i]) return;
-    if(REF_W.some(w=>tokMatch(k,stripAl(w)))||INC_W.some(w=>tokMatch(k,stripAl(w)))) used[i]=true;
-  });
-
-  const note=toks.filter((_,i)=>!used[i]).join(' ').slice(0,60);
-  return {amount,kind,
-    cat:(cM.best&&cM.best.id)||S.lastCat[kind]||catsOf(kind)[0].id,
-    acct:(aM.best&&aM.best.id)||S.draft.acct, note};
-}
+/* ── natural language entry (parser lives in logic.js) ── */
+const parseEntry=raw=>parseSentence(raw,{accts:liveAccts(),expCats:catsOf('exp'),incCats:catsOf('inc'),
+  pro:PRO(),lastCat:S.lastCat,acct:S.draft.acct});
 $('#nlBtn').addEventListener('click',()=>{
   sheet(`<h2>تسجيل بجملة</h2>
     <p class="lede">اكتب المبلغ والتصنيف والحساب في سطر واحد. مثال: <b>٥٠ أكل كاش</b> أو <b>20000 مرتب فيزا</b>.</p>
@@ -987,7 +949,7 @@ $('#nlBtn').addEventListener('click',()=>{
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="nlOk">سجّل</button></div>`);
   const upd=()=>{
-    const p=parseSentence($('#nlIn').value);
+    const p=parseEntry($('#nlIn').value);
     $('#nlOut').innerHTML = p
       ? `${KINDS[p.kind].label} · ${catOf(p.cat).emoji} ${esc(catOf(p.cat).name)} · ${esc(acctOf(p.acct).name)} · <span class="num">${money(p.amount)}</span> ${esc(S.settings.cur)}${p.note?' · '+esc(p.note):''}`
       : 'اكتب رقم على الأقل';
@@ -996,7 +958,7 @@ $('#nlBtn').addEventListener('click',()=>{
   $('#nlIn').onkeydown=e=>{ if(e.key==='Enter') $('#nlOk').click(); };
   upd();
   $('#nlOk').onclick=async()=>{
-    const p=parseSentence($('#nlIn').value);
+    const p=parseEntry($('#nlIn').value);
     if(!p){ $('#nlIn').focus(); return; }
     closeSheet();
     await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:p.note,date:today()});
@@ -1192,7 +1154,7 @@ function renderRep(){
   const B=budgetFor(mk);
   const [Y,M]=mk.split('-').map(Number), D=dim(Y,M);
   const isThis=mk===thisM, now=new Date();
-  const dLeft=isThis?D-now.getDate()+1:0, dPast=isThis?now.getDate():D;
+  const dLeft=isThis?D-now.getDate()+1:0, dPast=daysElapsed(mk,now);
 
   const nav=`<div class="mnav">
     <button id="rNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
@@ -1390,14 +1352,7 @@ function lastRecon(acct){
 function expectedFor(acct){
   const L=lastRecon(acct);
   if(!L) return null;
-  /* same-day tx logged after the count belong to the next period (older recons lack `at`) */
-  const after=t=>t.date>L.date || (L.at && t.date===L.date && t.at>L.at);
-  const since=S.tx.filter(t=>after(t) && (t.acct===acct||t.toAcct===acct));
-  let d=0;
-  for(const t of since){
-    if(t.kind==='trf'){ if(t.toAcct===acct) d+=t.amount; if(t.acct===acct) d-=t.amount; }
-    else if(t.acct===acct) d += (t.kind==='inc'||t.kind==='ref')? t.amount : -t.amount;
-  }
+  const d=S.tx.filter(t=>afterRecon(t,L)).reduce((s,t)=>s+txDelta(t,acct),0);
   return {base:L.cash, from:L.date, delta:d, expected:L.cash+d};
 }
 function reconCard(mk){
@@ -1561,23 +1516,16 @@ function walDebt(){
         <span class="hint">${money0(d.amount)}</span></button>`).join('<div class="perf"></div>')}</div></div>`:''}
     <div style="height:14px"></div>`;
 }
-function months12(start){
-  const out=[]; let k=today().slice(0,7);
-  for(let i=0;i<12;i++){ if(!start||k>=start.slice(0,7)) out.unshift(k); k=prevMonth(k); }
-  return out;
-}
 function walRent(){
   const cur=esc(S.settings.cur);
   if(!S.rents.length) return `<div class="empty"><div class="h">مفيش عقود إيجار</div>
       <div class="p">سجّل الشقة والساكن والإيجار الشهري، وعلّم الشهور المدفوعة — والتطبيق يحسب المتأخر.</div></div>
     <button class="ghost" id="addRent">+ عقد إيجار</button>`;
-  const tm=today().slice(0,7), dNow=new Date().getDate();
+  const now=new Date();
   let due=0, coll=0;
   const cards=S.rents.map(r=>{
-    const ms=months12(r.start);
-    /* this month is only late once its due day has passed */
-    const curDue=Math.min(r.dueDay||1,dim(+tm.slice(0,4),+tm.slice(5,7)));
-    const overdue=m=>m<tm || (m===tm && dNow>curDue);
+    const ms=months12(r.start,now);
+    const overdue=m=>rentOverdue(m,r.dueDay,now);
     const late=ms.filter(m=>overdue(m) && !(r.paid||[]).includes(m));
     due+=late.length*r.amount;
     coll+=ms.filter(m=>(r.paid||[]).includes(m)).length*r.amount;
@@ -1799,7 +1747,7 @@ function renderSet(){
       <span class="chev">‹</span></button>`).join('<div class="perf"></div>');
 
   $('#setBody').innerHTML=`
-    ${backupDue()?`<div class="banner">عدّى أكتر من شهر من غير نسخة احتياطية. البيانات على الموبايل ده بس — <b>خُد نسخة دلوقتي</b>.</div>`:''}
+    ${backupNag()?`<div class="banner">${backupNag()}. البيانات على الموبايل ده بس — <b>خُد نسخة دلوقتي</b>.</div>`:''}
 
     <div class="sec"><h2>وضع التطبيق</h2>
       <div class="seg" id="modeSeg">
@@ -1871,6 +1819,8 @@ function renderSet(){
       </div>
       <div style="font-size:11.5px;color:var(--dim);margin-top:9px;line-height:1.6">
         ${S.tx.length} حركة محفوظة على الموبايل ده${Store.persistent?'':' — مؤقتاً في الذاكرة فقط'}.
+        ${persisted===true?'<br>المتصفح متعهّد ميمسحش البيانات لوحده.'
+          :persisted===false?'<br>المتصفح ممكن يمسح البيانات لو الموبايل اتملى — ثبّت التطبيق على الشاشة الرئيسية وخُد نسخة احتياطية بانتظام.':''}
       </div></div>
     <div style="height:12px"></div>`;
 
@@ -2023,10 +1973,17 @@ function exportCsv(){
   download(`masareef-${today()}.csv`,csv,'text/csv;charset=utf-8');
   toast('اتصدر ملف CSV');
 }
+const backupJson=()=>JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
+  tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents});
 async function exportJson(){
-  download(`masareef-backup-${today()}.json`,
-    JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
-      tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents}),'application/json');
+  const name=`masareef-backup-${today()}.json`, text=backupJson();
+  /* on phones the share sheet saves straight to Files / Drive / WhatsApp */
+  let file=null;
+  try{ file=new File([text],name,{type:'application/json'}); }catch(e){}
+  if(file && navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file],title:name}); }
+    catch(e){ if(e.name==='AbortError') return; download(name,text,'application/json'); }
+  } else download(name,text,'application/json');
   S.settings.lastBackup=Date.now(); await saveSettings();
   renderSet(); toast('النسخة الاحتياطية جاهزة');
 }
@@ -2034,54 +1991,53 @@ function importJson(){
   const i=document.createElement('input'); i.type='file'; i.accept='.json,application/json';
   i.onchange=async()=>{
     const f=i.files[0]; if(!f) return;
-    try{
-      const d=JSON.parse(await f.text());
-      if(!Array.isArray(d.tx)||!Array.isArray(d.cats)) throw 0;
-      if(!confirm('الاسترجاع هيمسح البيانات الحالية ويحل مكانها. تكمل؟')) return;
-      for(const s of ['tx','cats','recur','debt','recon','acct','plan','rent']) await Store.clear(s);
-      let accts=d.acct||[];
-      if(!accts.length){
-        accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
-      }
-      for(const a of accts) await Store.put('acct',a);
-      const aCash=accts.find(a=>a.type==='cash')||accts[0];
-      const aBank=accts.find(a=>a.type==='bank')||accts[accts.length-1];
-      for(const c of d.cats){ if(!c.kind)c.kind='exp';
-        if(c.kind==='exp'&&typeof c.fixed!=='boolean') c.fixed=false; await Store.put('cats',c); }
-      for(const t of d.tx){ if(!t.kind)t.kind='exp'; delete t._new;
-        if(!t.acct) t.acct = t.method==='card'?aBank.id:aCash.id; await Store.put('tx',t); }
-      for(const r of (d.recur||[])){ if(!r.kind)r.kind='exp';
-        if(!r.acct) r.acct = r.method==='card'?aBank.id:aCash.id; await Store.put('recur',r); }
-      for(const x of (d.debt||[])) await Store.put('debt',x);
-      for(const x of (d.recon||[])){ if(!x.acct) x.acct=aCash.id; await Store.put('recon',x); }
-      for(const x of (d.plan||[])) await Store.put('plan',x);
-      for(const x of (d.rent||[])) await Store.put('rent',x);
-      if(d.settings){ S.settings={...S.settings,...d.settings};
-        if(!Array.isArray(S.settings.currencies)) S.settings.currencies=[];
-        await saveSettings(); }
-      S.accts=accts.slice().sort((a,b)=>a.order-b.order);
-      S.cats=d.cats.slice().sort((a,b)=>a.order-b.order);
-      S.tx=d.tx.slice(); sortTx();
-      S.recur=d.recur||[]; S.debts=d.debt||[]; S.plans=d.plan||[]; S.rents=d.rent||[];
-      S.recons=(d.recon||[]).slice().sort((a,b)=>a.date.localeCompare(b.date));
-      S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;
-      S.lastCat.ref=S.lastCat.exp;
-      S.lastCat.inc=catsOf('inc')[0]&&catsOf('inc')[0].id;
-      S.draft.cat=S.lastCat[S.draft.kind==='trf'?'exp':S.draft.kind];
-      S.draft.acct=liveAccts()[0].id;
-      S.draft.toAcct=(liveAccts()[1]||liveAccts()[0]).id;
-      applyTheme(); applyMode();
-      renderAccts(); renderCats(); renderQuick(); renderSet(); renderRail(); renderReadout();
-      toast('اترجعت البيانات');
-    }catch(e){ toast('الملف مش صالح'); }
+    let d;
+    try{ d=JSON.parse(await f.text()); }catch(e){ return toast('الملف مش صالح'); }
+    if(checkBackup(d)) return toast('الملف مش صالح');
+    if(!confirm('الاسترجاع هيمسح البيانات الحالية ويحل مكانها. هنحفظلك نسخة من بياناتك الحالية الأول. تكمل؟')) return;
+    if(S.tx.length) download(`masareef-before-restore-${today()}.json`,backupJson(),'application/json');
+
+    let accts=d.acct||[];
+    if(!accts.length) accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
+    const aCash=accts.find(a=>a.type==='cash')||accts[0];
+    const aBank=accts.find(a=>a.type==='bank')||accts[accts.length-1];
+    for(const c of d.cats){ if(!c.kind)c.kind='exp'; if(c.kind==='exp'&&typeof c.fixed!=='boolean') c.fixed=false; }
+    for(const t of d.tx){ if(!t.kind)t.kind='exp'; delete t._new; if(!t.acct) t.acct=t.method==='card'?aBank.id:aCash.id; }
+    for(const r of (d.recur||[])){ if(!r.kind)r.kind='exp'; if(!r.acct) r.acct=r.method==='card'?aBank.id:aCash.id; }
+    for(const x of (d.recon||[])) if(!x.acct) x.acct=aCash.id;
+    const settings={...S.settings,...(d.settings||{})};
+    if(!Array.isArray(settings.currencies)) settings.currencies=[];
+
+    /* one transaction: either the whole backup lands or the current data stays untouched */
+    const lists={tx:d.tx,cats:d.cats,recur:d.recur||[],debt:d.debt||[],recon:d.recon||[],acct:accts,plan:d.plan||[],rent:d.rent||[]};
+    const ops=Object.keys(lists).map(k=>['clear',k]);
+    for(const k in lists) for(const x of lists[k]) ops.push(['put',k,x]);
+    ops.push(['put','meta',{id:'settings',v:settings}]);
+    try{ await Store.batch(ops); }catch(e){ return toast('الاسترجاع فشل — بياناتك زي ما هي'); }
+
+    S.settings=settings;
+    S.accts=accts.slice().sort((a,b)=>a.order-b.order);
+    S.cats=d.cats.slice().sort((a,b)=>a.order-b.order);
+    S.tx=d.tx.slice(); sortTx();
+    S.recur=lists.recur; S.debts=lists.debt; S.plans=lists.plan; S.rents=lists.rent;
+    S.recons=lists.recon.slice().sort((a,b)=>a.date.localeCompare(b.date));
+    S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;
+    S.lastCat.ref=S.lastCat.exp;
+    S.lastCat.inc=catsOf('inc')[0]&&catsOf('inc')[0].id;
+    S.draft.cat=S.lastCat[S.draft.kind==='trf'?'exp':S.draft.kind];
+    S.draft.acct=liveAccts()[0].id;
+    S.draft.toAcct=(liveAccts()[1]||liveAccts()[0]).id;
+    applyTheme(); applyMode();
+    renderAccts(); renderCats(); renderQuick(); renderSet(); renderRail(); renderReadout();
+    toast('اترجعت البيانات');
   };
   i.click();
 }
 async function wipe(){
   if(!confirm('حذف كل الحركات؟ الحسابات والتصنيفات والبنود الثابتة والسلف هتفضل زي ما هي.')) return;
-  await Store.clear('tx'); await Store.clear('recon');
-  S.tx=[]; S.recons=[];
-  for(const r of S.recur){ r.lastMonth=''; await Store.put('recur',r); }
+  const recur=S.recur.map(r=>({...r,lastMonth:''}));
+  await Store.batch([['clear','tx'],['clear','recon'],...recur.map(r=>['put','recur',r])]);
+  S.tx=[]; S.recons=[]; S.recur=recur;
   renderSet(); renderRail(); renderQuick(); renderAccts(); toast('اتمسحت كل الحركات');
 }
 
