@@ -158,6 +158,12 @@ nav button.fab{color:var(--dim)}
 nav button.fab svg{width:26px;height:26px;padding:13px;margin-top:-24px;border-radius:50%;stroke-width:2.2;
        color:#fff;background:var(--brand)!important;
        box-shadow:0 8px 20px color-mix(in srgb,var(--brand) 40%,transparent),0 0 0 5px var(--ink)}
+/* simple mode has four tabs, so there is no middle for the raised + — it's a plain first tab there */
+nav.n4 button.fab{order:-1}
+nav.n4 button.fab svg{width:20px;height:20px;padding:4px 16px;margin-top:0;border-radius:999px;box-shadow:none;stroke-width:1.7;
+       color:inherit;background:transparent!important}
+nav.n4 button.fab.on svg{background:color-mix(in srgb,var(--brand) 14%,transparent)!important}
+nav.n4 button.fab.on{color:var(--brand)}
 /* on the entry screen itself the + sits in the bar, clear of the save button */
 nav button.fab.on{color:var(--brand)}
 nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;border-radius:999px;box-shadow:none;stroke-width:2}
@@ -803,6 +809,7 @@ function applyMode(){
 
   if(!Store.persistent){ $('#memWarn').hidden=false; return; }
   persisted=await Store.persist();
+  if(!S.tx.length && !S.settings.welcomed && !(S.settings.lock&&S.settings.lock.pin)) setTimeout(welcome,400);
   const nag=backupNag(); if(nag) setTimeout(()=>{ if(!$('#lock')||$('#lock').hidden) toast(nag,exportJson,'خُد نسخة'); },1200);
 })();
 
@@ -895,6 +902,25 @@ function lockSheet(){
   };
 }
 
+function welcome(){
+  sheet(`<h2>أهلاً في مصاريفي 👋</h2>
+    <p class="lede">سجّل أي مصروف في تلات دوسات:</p>
+    <div class="list" style="margin-bottom:14px">
+      <div class="item"><em style="--t:var(--brand)">١</em><span class="nm">اكتب المبلغ من الأرقام</span></div><div class="perf"></div>
+      <div class="item"><em style="--t:var(--brand)">٢</em><span class="nm">اختار التصنيف<small>أو اكتب ملاحظة زي «شاورما» من ✎ وهو يختار لوحده</small></span></div><div class="perf"></div>
+      <div class="item"><em style="--t:var(--brand)">٣</em><span class="nm">دوس «سجّل»</span></div></div>
+    <p class="lede" style="margin-bottom:10px">تحب تبدأ بأنهي وضع؟ تقدر تغيّره بعدين من الإعدادات.</p>
+    <div class="seg" id="wMode">
+      <button data-m="simple" aria-pressed="true">بسيط<br><small style="font-weight:400;color:var(--dim)">مصروف ودخل وتقارير</small></button>
+      <button data-m="pro" aria-pressed="false">احترافي<br><small style="font-weight:400;color:var(--dim)">حسابات، سلف، حجوزات</small></button></div>
+    <div class="acts"><button class="go" id="wOk">يلا نبدأ</button></div>`);
+  let m='simple';
+  $('#wMode').onclick=e=>{ const b=e.target.closest('[data-m]'); if(!b) return; m=b.dataset.m;
+    $('#wMode').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.m===m)); };
+  $('#wOk').onclick=async()=>{ S.settings.welcomed=true; S.settings.mode=m; await saveSettings();
+    closeSheet(); applyMode(); renderAccts(); renderCats(); renderQuick(); renderRail(); renderReadout(); };
+}
+
 /* null = browser can't tell us, true/false = whether our data is safe from eviction */
 let persisted=null;
 
@@ -966,7 +992,7 @@ function setKind(k){
   if(k!=='exp') document.body.classList.add('k-'+k);
   $('#kinds').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===k));
   moveInd();
-  if(k!=='trf'){ S.draft.cat=S.lastCat[k]||catsOf(k)[0].id; S.draft.catPicked=false; }
+  if(k!=='trf'){ S.draft.cat=S.lastCat[k]||catsOf(k)[0].id; S.draft.catPicked=false; S.draft.catGuessed=false; }
   if(k!=='trf') S.draft.fee=0;
   $('#save').textContent=KINDS[k].save;
   const trf=k==='trf';
@@ -1024,7 +1050,7 @@ function renderCats(){
 }
 $('#cats').addEventListener('click',e=>{
   const b=e.target.closest('[data-cat]'); if(!b) return;
-  S.draft.cat=b.dataset.cat; S.draft.catPicked=true; S.lastCat[S.draft.kind]=b.dataset.cat;
+  S.draft.cat=b.dataset.cat; S.draft.catPicked=true; S.draft.catGuessed=false; S.lastCat[S.draft.kind]=b.dataset.cat;
   renderCats(); renderQuick(); renderReadout();
 });
 
@@ -1103,8 +1129,8 @@ async function commit(t,onUndo){
     async()=>{ await Store.del('tx',rec.id); S.tx=S.tx.filter(x=>x.id!==rec.id);
       if(onUndo) await onUndo();
       renderRail(); renderQuick(); renderAccts(); renderLog(); toast('اتراجعنا'); });
-  return rec;
   renderRail(); renderQuick(); renderAccts(); renderReadout();
+  return rec;
 }
 
 /* a line for the save toast when this expense pushed its category (or the month) past 80% / 100% of budget */
@@ -1226,7 +1252,7 @@ $('#noteBtn').addEventListener('click',()=>{
     S.draft.note=$('#fNote').value.trim();
     /* no chip tapped yet → let the note pick the category («شاورما» → أكل وشرب) */
     const g=S.draft.kind!=='trf'&&!S.draft.catPicked&&guessCat(S.draft.note,catsOf(S.draft.kind));
-    if(g){ S.draft.cat=g.id; renderCats(); }
+    if(g){ if(!S.draft.catGuessed) S.draft.prevCat=S.draft.cat; S.draft.cat=g.id; S.draft.catGuessed=true; renderCats(); }
     S.draft.date=$('#fDate').value||today();
     S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null;
     S.draft.unit=$('#fUnit')?$('#fUnit').value:'';
@@ -1303,7 +1329,8 @@ $('#save').addEventListener('click',async()=>{
   if(cc){ t.ccy=cc.code; t.raw=raw; t.rate=cc.rate; }
   if(S.draft.unit && (k==='exp'||k==='ref')) t.unit=S.draft.unit;
   if(k!=='trf' && S.draft.catPicked && S.draft.note) await learnFrom(S.draft.note,S.draft.cat);
-  if(k!=='trf') S.lastCat[k]=S.draft.cat;
+  if(k!=='trf' && !S.draft.catGuessed) S.lastCat[k]=S.draft.cat;
+  if(S.draft.catGuessed){ S.draft.cat=S.draft.prevCat||S.draft.cat; S.draft.catGuessed=false; }
   /* a transfer's fee is a real expense from the sending account */
   if(k==='trf' && S.draft.fee>0){
     const fc=guessCat('رسوم تحويل',catsOf('exp'))||catsOf('exp').slice(-1)[0];
@@ -1426,6 +1453,7 @@ $('#searchIn').addEventListener('input',e=>{ S.search=e.target.value; renderLog(
 
 function editTx(id){
   const t=S.tx.find(x=>x.id===id); if(!t) return;
+  if(t.stay && S.stays.some(st=>st.id===t.stay)){ toast('الدفعة دي من حجز — عدّلها من الحجز'); return staySheet(t.stay); }
   const isTrf=t.kind==='trf';
   /* always offer the tx's own kind and accounts, even if hidden (simple mode / closed account),
      otherwise saving silently converts a transfer to an expense or moves it to another account */
@@ -1768,10 +1796,10 @@ function budgetSheet(){
   sheet(`<h2>الميزانية الشهرية</h2>
     <p class="lede">لما تحدد ميزانية، شاشة التسجيل بتوريك «متاح النهاردة كام».</p>
     <div class="f"><label>الطريقة</label><select id="bMode">
-      <option value="fixed" ${b>0?'selected':''}>مبلغ ثابت أحدده</option>
+      <option value="fixed" ${b>=0?'selected':''}>مبلغ ثابت أحدده</option>
       <option value="income" ${b===-1?'selected':''}>= الدخل المسجّل في الشهر</option>
-      <option value="off" ${b===0?'selected':''}>بدون ميزانية</option></select></div>
-    <div class="f" id="bWrap"${b>0?'':' hidden'}><label>المبلغ (${esc(S.settings.cur)})</label>
+      <option value="off">بدون ميزانية</option></select></div>
+    <div class="f" id="bWrap"${b>=0?'':' hidden'}><label>المبلغ (${esc(S.settings.cur)})</label>
       <input id="bAmt" type="number" inputmode="decimal" min="0" step="100" value="${b>0?b:''}" placeholder="مثلاً 15000"></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="bOk">حفظ</button></div>`);
@@ -1926,9 +1954,9 @@ function walDue(){
   const open=S.plans.filter(p=>!p.done).sort((a,b)=>a.date.localeCompare(b.date));
   const done=S.plans.filter(p=>p.done).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   const tot=open.reduce((s,p)=>s+p.amount,0);
-  return `<div class="banner" style="text-align:center">مصاريف قادمة مش مدفوعة:
+  return `${open.length?`<div class="banner" style="text-align:center">مصاريف قادمة مش مدفوعة:
       <b class="num">${money0(tot)} ${cur}</b><br>
-      <span style="color:var(--dim);font-size:12px">اللي منها في الشهر ده بيتخصم من «متاح النهاردة»</span></div>
+      <span style="color:var(--dim);font-size:12px">اللي منها في الشهر ده بيتخصم من «متاح النهاردة»</span></div>`:''}
     ${open.length?`<div class="list" style="margin-top:14px">${open.map(p=>{
       const late=p.date<today();
       return `<button class="item" data-plan="${p.id}"><em${tone(catOf(p.cat))}>${catOf(p.cat).emoji}</em>
@@ -2881,9 +2909,13 @@ function importJson(){
   i.click();
 }
 async function wipe(){
-  if(!confirm('حذف كل الحركات؟ الحسابات والتصنيفات والبنود الثابتة والسلف هتفضل زي ما هي.')) return;
+  if(!confirm('حذف كل الحركات؟ الحسابات والتصنيفات والبنود الثابتة والسلف والحجوزات وعقود الإيجار هتفضل — بس الدخل اللي اتسجل منها هيتمسح.')) return;
   const recur=S.recur.map(r=>({...r,lastMonth:'',lastDate:'',since:today()}));
-  await Store.batch([['clear','tx'],['clear','recon'],...recur.map(r=>['put','recur',r])]);
+  /* their income is gone: payments stay counted on the booking, but log nothing (like money from before the app) */
+  for(const st of S.stays) st.pays=(st.pays||[]).map(p=>{ const q={...p,pre:true}; delete q.tx; return q; });
+  for(const r of S.rents) delete r.txs;
+  await Store.batch([['clear','tx'],['clear','recon'],...recur.map(r=>['put','recur',r]),
+    ...S.stays.map(st=>['put','stay',st]),...S.rents.map(r=>['put','rent',r])]);
   S.tx=[]; S.recons=[]; S.recur=recur;
   renderSet(); renderRail(); renderQuick(); renderAccts(); toast('اتمسحت كل الحركات');
 }
