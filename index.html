@@ -625,6 +625,7 @@ function applyMode(){
   S.repMonth=today().slice(0,7);
 
   await runRecurring();
+  lastDay=today();
   buildKeys(); applyMode(); renderAccts(); renderCats(); renderQuick(); renderRail(); renderReadout();
 
   if(!Store.persistent) toast('التخزين مش متاح — البيانات مش هتتحفظ');
@@ -635,18 +636,39 @@ const backupDue=()=>S.tx.length>15 && (Date.now()-(S.settings.lastBackup||0) > 3
 
 async function runRecurring(){
   const now=new Date(), mk=iso(now).slice(0,7);
+  /* catch up on months the app wasn't opened in, but never more than 12 back */
+  let floor=mk; for(let i=0;i<11;i++) floor=prevMonth(floor);
   let n=0;
   for(const r of S.recur){
-    if(r.lastMonth===mk) continue;
-    const day=Math.min(r.day,dim(now.getFullYear(),now.getMonth()+1));
-    if(now.getDate()<day) continue;
-    const t={id:uid(),kind:r.kind||'exp',amount:r.amount,cat:r.cat,acct:r.acct,note:r.note||'',
-      date:iso(new Date(now.getFullYear(),now.getMonth(),day)),at:Date.now(),auto:1};
-    await Store.put('tx',t); S.tx.push(t);
-    r.lastMonth=mk; await Store.put('recur',r); n++;
+    let k=r.lastMonth?nextMonth(r.lastMonth):mk;
+    if(k<floor) k=floor;
+    const start=r.lastMonth;
+    while(k<=mk){
+      const [y,m]=k.split('-').map(Number);
+      const day=Math.min(r.day,dim(y,m));
+      if(k===mk && now.getDate()<day) break;
+      const t={id:uid(),kind:r.kind||'exp',amount:r.amount,cat:r.cat,acct:r.acct,note:r.note||'',
+        date:iso(new Date(y,m-1,day)),at:Date.now(),auto:1};
+      await Store.put('tx',t); S.tx.push(t);
+      r.lastMonth=k; n++;
+      k=nextMonth(k);
+    }
+    if(r.lastMonth!==start) await Store.put('recur',r);
   }
   if(n){ sortTx(); toast(`سُجّل <b>${n}</b> بند ثابت`); }
 }
+
+/* PWAs stay alive in the background for days — when resumed on a new day,
+   roll the draft date forward and post any fixed items that came due */
+let lastDay=null;
+document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState!=='visible' || !lastDay) return;
+  const d=today(); if(d===lastDay) return;
+  if(S.draft.date===lastDay) S.draft.date=d;
+  lastDay=d;
+  await runRecurring();
+  renderRail(); renderQuick(); renderAccts(); renderReadout();
+});
 
 /* ═══════ ENTRY ═══════ */
 function buildKinds(){
@@ -1076,23 +1098,26 @@ $('#searchIn').addEventListener('input',e=>{ S.search=e.target.value; renderLog(
 function editTx(id){
   const t=S.tx.find(x=>x.id===id); if(!t) return;
   const isTrf=t.kind==='trf';
-  const kOpts=kindList().map(k=>`<option value="${k}" ${t.kind===k?'selected':''}>${KINDS[k].label}</option>`).join('');
+  /* always offer the tx's own kind and accounts, even if hidden (simple mode / closed account),
+     otherwise saving silently converts a transfer to an expense or moves it to another account */
+  const kinds=kindList().includes(t.kind)?kindList():[...kindList(),t.kind];
+  const kOpts=kinds.map(k=>`<option value="${k}" ${t.kind===k?'selected':''}>${KINDS[k].label}</option>`).join('');
+  const acctOpts=sel=>{
+    const list=liveAccts().slice(), own=S.accts.find(a=>a.id===sel);
+    if(own&&own.archived) list.push(own);
+    return list.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.emoji} ${esc(a.name)}${a.archived?' (مقفول)':''}</option>`).join('');
+  };
   sheet(`<h2>تعديل ${KINDS[t.kind].label}</h2>
     ${t.ccy?`<p class="lede">مسجّل بـ ${money(t.raw)} ${esc(t.ccy)} بسعر ${t.rate}. التعديل بالعملة الأساسية.</p>`:''}
     <div class="f"><div class="row2">
       <div><label>المبلغ (${esc(S.settings.cur)})</label><input id="eAmt" type="number" inputmode="decimal" step="0.01" value="${t.amount}"></div>
       <div><label>التاريخ</label><input id="eDate" type="date" value="${t.date}"></div>
     </div></div>
-    ${PRO()?`<div class="f"><label>النوع</label><select id="eKind">${kOpts}</select></div>`:
-      `<div class="f"><label>النوع</label><select id="eKind">
-        <option value="exp" ${t.kind==='exp'?'selected':''}>مصروف</option>
-        <option value="inc" ${t.kind==='inc'?'selected':''}>دخل</option></select></div>`}
+    <div class="f"><label>النوع</label><select id="eKind">${kOpts}</select></div>
     <div class="f" id="eCatWrap"${isTrf?' hidden':''}><label>التصنيف</label><select id="eCat">
       ${catsOf(t.kind==='ref'?'exp':t.kind).map(c=>`<option value="${c.id}" ${c.id===t.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
-    <div class="f"><label>${isTrf?'من حساب':'الحساب'}</label><select id="eAcct">
-      ${liveAccts().map(a=>`<option value="${a.id}" ${a.id===t.acct?'selected':''}>${a.emoji} ${esc(a.name)}</option>`).join('')}</select></div>
-    <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">
-      ${liveAccts().map(a=>`<option value="${a.id}" ${a.id===t.toAcct?'selected':''}>${a.emoji} ${esc(a.name)}</option>`).join('')}</select></div>
+    <div class="f"><label>${isTrf?'من حساب':'الحساب'}</label><select id="eAcct">${acctOpts(t.acct)}</select></div>
+    <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">${acctOpts(t.toAcct)}</select></div>
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
     <div class="acts"><button class="del" id="eDel">حذف</button>
       <button class="go" id="eOk">حفظ التعديل</button></div>`);
@@ -1105,17 +1130,22 @@ function editTx(id){
   $('#eOk').onclick=async()=>{
     const a=Number($('#eAmt').value); if(!(a>0)){ $('#eAmt').focus(); return; }
     const k=$('#eKind').value;
+    /* validate before touching t, so a rejected edit doesn't leave memory out of sync with the DB */
+    if(k==='trf' && $('#eTo').value===$('#eAcct').value){ toast('الحسابين نفس الحساب'); return; }
+    /* amount is edited in base currency — the original foreign amount no longer applies */
+    if(t.ccy && a!==t.amount){ delete t.ccy; delete t.raw; delete t.rate; }
     Object.assign(t,{amount:a,date:$('#eDate').value||t.date,kind:k,acct:$('#eAcct').value,
       note:$('#eNote').value.trim()});
-    if(k==='trf'){ t.toAcct=$('#eTo').value; delete t.cat;
-      if(t.toAcct===t.acct){ toast('الحسابين نفس الحساب'); return; } }
+    if(k==='trf'){ t.toAcct=$('#eTo').value; delete t.cat; }
     else { t.cat=$('#eCat').value; delete t.toAcct; }
     await Store.put('tx',t); sortTx();
-    closeSheet(); renderLog(); renderRail(); toast('اتعدل');
+    closeSheet(); renderLog(); renderRail(); renderAccts(); toast('اتعدل');
   };
   $('#eDel').onclick=async()=>{
     await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id);
-    closeSheet(); renderLog(); renderRail(); toast('اتحذف');
+    closeSheet(); renderLog(); renderRail(); renderAccts(); renderQuick();
+    toast('اتحذف',async()=>{ await Store.put('tx',t); S.tx.push(t); sortTx();
+      renderLog(); renderRail(); renderAccts(); renderQuick(); toast('رجعت'); });
   };
 }
 $('#logFilter').addEventListener('click',()=>{
@@ -1273,7 +1303,7 @@ function renderRep(){
 
   $('#repBody').innerHTML = nav + hero + anom + budCard + ie + fv + (PRO()?acc+reconCard(mk):'') + `
     <div class="stats">
-      <div class="stat"><div class="v">${money0(E/D)}</div><div class="l">متوسط مصروف يومي</div></div>
+      <div class="stat"><div class="v">${money0(E/dPast)}</div><div class="l">متوسط مصروف يومي</div></div>
       <div class="stat"><div class="v">${logged}<span style="font-size:13px;color:var(--dim)"> / ${D}</span></div><div class="l">أيام فيها مصاريف</div></div>
       <div class="stat"><div class="v">${exp.length}</div><div class="l">عدد المصاريف</div></div>
       <div class="stat"><div class="v">${exp.length?money0(sum(exp)/exp.length):0}</div><div class="l">متوسط المصروف</div></div>
@@ -1360,7 +1390,9 @@ function lastRecon(acct){
 function expectedFor(acct){
   const L=lastRecon(acct);
   if(!L) return null;
-  const since=S.tx.filter(t=>t.date>L.date && (t.acct===acct||t.toAcct===acct));
+  /* same-day tx logged after the count belong to the next period (older recons lack `at`) */
+  const after=t=>t.date>L.date || (L.at && t.date===L.date && t.at>L.at);
+  const since=S.tx.filter(t=>after(t) && (t.acct===acct||t.toAcct===acct));
   let d=0;
   for(const t of since){
     if(t.kind==='trf'){ if(t.toAcct===acct) d+=t.amount; if(t.acct===acct) d-=t.amount; }
@@ -1397,7 +1429,7 @@ function reconSheet(acctId){
     $('#rcOk').onclick=async()=>{
       const v=Number($('#rcAmt').value);
       if($('#rcAmt').value===''||!(v>=0)){ $('#rcAmt').focus(); return; }
-      const r={id:uid(),date:today(),acct,cash:v,expected:v,diff:0};
+      const r={id:uid(),date:today(),at:Date.now(),acct,cash:v,expected:v,diff:0};
       await Store.put('recon',r); S.recons.push(r);
       closeSheet(); renderRep(); renderWal(); toast('اتسجل الرصيد');
     };
@@ -1437,7 +1469,7 @@ function reconSheet(acctId){
       const t={id:uid(),kind,amount:Math.abs(d),cat:c.id,acct,note:'فرق تسوية',date:today(),at:Date.now()};
       await Store.put('tx',t); S.tx.push(t); sortTx();
     }
-    const r={id:uid(),date:today(),acct,cash:v,expected:e.expected,diff:d};
+    const r={id:uid(),date:today(),at:Date.now(),acct,cash:v,expected:e.expected,diff:d};
     await Store.put('recon',r); S.recons.push(r);
     closeSheet(); renderCats(); renderRep(); renderRail(); renderWal();
     toast(Math.abs(d)<0.5?'مطابق تماماً':`فرق <span class="a">${money0(Math.abs(d))}</span> ${cur}`);
@@ -1539,13 +1571,16 @@ function walRent(){
   if(!S.rents.length) return `<div class="empty"><div class="h">مفيش عقود إيجار</div>
       <div class="p">سجّل الشقة والساكن والإيجار الشهري، وعلّم الشهور المدفوعة — والتطبيق يحسب المتأخر.</div></div>
     <button class="ghost" id="addRent">+ عقد إيجار</button>`;
-  const tm=today().slice(0,7);
+  const tm=today().slice(0,7), dNow=new Date().getDate();
   let due=0, coll=0;
   const cards=S.rents.map(r=>{
     const ms=months12(r.start);
-    const late=ms.filter(m=>m<=tm && !(r.paid||[]).includes(m));
+    /* this month is only late once its due day has passed */
+    const curDue=Math.min(r.dueDay||1,dim(+tm.slice(0,4),+tm.slice(5,7)));
+    const overdue=m=>m<tm || (m===tm && dNow>curDue);
+    const late=ms.filter(m=>overdue(m) && !(r.paid||[]).includes(m));
     due+=late.length*r.amount;
-    coll+=(r.paid||[]).length*r.amount;
+    coll+=ms.filter(m=>(r.paid||[]).includes(m)).length*r.amount;
     return `<div class="card"><h3>${esc(r.tenant)}${r.unit?' — '+esc(r.unit):''}
         <button data-rent="${r.id}">تعديل</button></h3>
       <div class="kv"><span>الإيجار الشهري</span><b>${money0(r.amount)} ${cur}</b></div>
@@ -1554,7 +1589,7 @@ function walRent(){
       <div class="striplbl" style="padding:14px 0 6px">علّم الشهر لما يتحصّل</div>
       <div class="mgrid">${ms.map(m=>{
         const paid=(r.paid||[]).includes(m);
-        const isLate=!paid&&m<=tm;
+        const isLate=!paid&&overdue(m);
         return `<button class="${paid?'paid':isLate?'late':''}" data-pay="${r.id}|${m}">${AR_M3[+m.slice(5)-1]}<br>${m.slice(2,4)}</button>`;
       }).join('')}</div></div>`;
   }).join('');
