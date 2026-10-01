@@ -109,6 +109,33 @@ function debtFlows(d){
   return out;
 }
 
+/* ═══════ nightly stays ═══════ */
+/* a booking: {from:'YYYY-MM-DD', nights, total, fee, channel, paidOn?} — the guest sleeps
+   the nights from `from` up to (not including) the checkout day */
+const stayNet=st=>Math.max(0,(st.total||0)-(st.fee||0));
+const stayOut=st=>iso(addDays(parseISO(st.from),Math.max(1,st.nights|0)));
+/* nights of the stay that fall in month `mk` */
+function stayNightsIn(st,mk){
+  const [y,m]=mk.split('-').map(Number), a=parseISO(st.from), out=parseISO(stayOut(st));
+  const lo=new Date(Math.max(a,new Date(y,m-1,1))), hi=new Date(Math.min(out,new Date(y,m,1)));
+  return Math.max(0,Math.round((hi-lo)/864e5));
+}
+/* the month's picture: nights booked, money by channel (split by the nights in the month),
+   and payouts not received yet (any month) */
+function staySummary(stays,mk){
+  const out={nights:0,gross:0,fees:0,net:0,count:0,by:{},pending:0,pendingN:0};
+  for(const st of stays){
+    if(!st.paidOn){ out.pending+=stayNet(st); out.pendingN++; }
+    const n=stayNightsIn(st,mk); if(!n) continue;
+    const share=n/Math.max(1,st.nights|0);
+    out.count++; out.nights+=n;
+    out.gross+=st.total*share; out.fees+=(st.fee||0)*share; out.net+=stayNet(st)*share;
+    const b=out.by[st.channel]||(out.by[st.channel]={nights:0,net:0,count:0});
+    b.nights+=n; b.net+=stayNet(st)*share; b.count++;
+  }
+  return out;
+}
+
 /* ═══════ what's due ═══════ */
 /* open debts, upcoming expenses and unpaid rent that are late or due within `days` */
 function dueItems({debts=[],plans=[],rents=[]},now,days=7){
@@ -730,11 +757,13 @@ function guessCat(text,cats){
 function checkBackup(d){
   if(!d||typeof d!=='object') return 'not an object';
   if(!Array.isArray(d.tx)||!Array.isArray(d.cats)) return 'missing tx or cats';
-  for(const k of ['acct','recur','debt','recon','plan','rent'])
+  for(const k of ['acct','recur','debt','recon','plan','rent','stay'])
     if(d[k]!=null && !Array.isArray(d[k])) return `${k} is not a list`;
   const ids=x=>x&&typeof x==='object'&&(typeof x.id==='string'||typeof x.id==='number');
-  for(const k of ['tx','cats','acct','recur','debt','recon','plan','rent'])
+  for(const k of ['tx','cats','acct','recur','debt','recon','plan','rent','stay'])
     if((d[k]||[]).some(x=>!ids(x))) return `${k} has a record without an id`;
+  for(const st of (d.stay||[]))
+    if(typeof st.from!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(st.from)||!(st.total>=0)) return 'stay with a bad date or amount';
   for(const t of d.tx){
     if(!(typeof t.amount==='number'&&isFinite(t.amount))) return 'tx with a bad amount';
     if(typeof t.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(t.date)) return 'tx with a bad date';
@@ -746,5 +775,5 @@ function checkBackup(d){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,debtFlows,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
+  debtPaid,debtLeft,debtFlows,stayNet,stayOut,stayNightsIn,staySummary,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,CAT_WORDS,checkBackup};

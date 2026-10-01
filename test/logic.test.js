@@ -247,3 +247,33 @@ test('debtFlows moves money through the chosen accounts', () => {
   // no account (older debts) leaves balances alone
   assert.deepEqual(L.debtFlows({ dir: 'out', amount: 50, date: '2026-09-01', pays: [{ amount: 50, date: '2026-09-02' }] }), []);
 });
+
+test('nightly stays', async t => {
+  const st = { from: '2026-09-29', nights: 3, total: 3000, fee: 450, channel: 'booking', paidOn: '2026-10-02' };
+  await t.test('checkout and net', () => {
+    assert.equal(L.stayOut(st), '2026-10-02');
+    assert.equal(L.stayNet(st), 2550);
+    assert.equal(L.stayNet({ total: 500 }), 500);
+  });
+  await t.test('nights split across months', () => {
+    assert.equal(L.stayNightsIn(st, '2026-09'), 2);
+    assert.equal(L.stayNightsIn(st, '2026-10'), 1);
+    assert.equal(L.stayNightsIn(st, '2026-11'), 0);
+  });
+  await t.test('month summary by channel, pending payouts', () => {
+    const direct = { from: '2026-10-10', nights: 2, total: 1600, fee: 0, channel: 'direct', paidOn: '2026-10-10' };
+    const airbnb = { from: '2026-10-20', nights: 4, total: 4000, fee: 600, channel: 'airbnb' };
+    const s = L.staySummary([st, direct, airbnb], '2026-10');
+    assert.equal(s.nights, 7); assert.equal(s.count, 3);
+    assert.equal(s.by.booking.nights, 1); assert.equal(s.by.booking.net, 850);
+    assert.equal(s.by.direct.net, 1600); assert.equal(s.by.airbnb.net, 3400);
+    assert.equal(s.net, 850 + 1600 + 3400); assert.equal(s.fees, 150 + 600);
+    assert.equal(s.pending, 3400); assert.equal(s.pendingN, 1);
+  });
+  await t.test('backups with stays', () => {
+    const base = { tx: [], cats: [] };
+    assert.equal(L.checkBackup({ ...base, stay: [{ id: 'a', ...st }] }), '');
+    assert.notEqual(L.checkBackup({ ...base, stay: [{ id: 'a', from: 'x', total: 1 }] }), '');
+    assert.notEqual(L.checkBackup({ ...base, stay: {} }), '');
+  });
+});

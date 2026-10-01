@@ -480,8 +480,8 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
-  const NAME='masareef', VER=3,
-        STORES=['tx','cats','recur','meta','debt','recon','acct','plan','rent'];
+  const NAME='masareef', VER=4,
+        STORES=['tx','cats','recur','meta','debt','recon','acct','plan','rent','stay'];
   let db=null, mem=null;
   function memInit(){ mem={}; STORES.forEach(s=>mem[s]=new Map()); }
   function open(){
@@ -539,7 +539,7 @@ const Store = (() => {
 
 /* ═══════ state ═══════ */
 const S = {
-  tx:[], cats:[], accts:[], recur:[], debts:[], recons:[], plans:[], rents:[],
+  tx:[], cats:[], accts:[], recur:[], debts:[], recons:[], plans:[], rents:[], stays:[], stayMonth:null,
   settings:{cur:'ج', monthBudget:0, currencies:[], lastBackup:0, mode:'simple', theme:'dark'},
   draft:{kind:'exp',amt:'',cat:null,acct:null,toAcct:null,note:'',date:null,ccy:null},
   lastCat:{exp:null,inc:null,ref:null},
@@ -692,6 +692,7 @@ function applyMode(){
   S.debts=await Store.all('debt');
   S.plans=await Store.all('plan');
   S.rents=await Store.all('rent');
+  S.stays=await Store.all('stay');
   S.recons=(await Store.all('recon')).sort((a,b)=>a.date.localeCompare(b.date));
   S.tx=await Store.all('tx');
 
@@ -1688,11 +1689,47 @@ function walDebt(){
         <span class="hint">${money0(d.amount)}</span></button>`).join('<div class="perf"></div>')}</div></div>`:''}
     <div style="height:14px"></div>`;
 }
+/* ── nightly bookings (Booking / Airbnb / direct) ── */
+const CH={booking:{name:'بوكينج',em:'B',t:'#1E5BD8'},airbnb:{name:'Airbnb',em:'A',t:'#FF385C'},direct:{name:'مباشر',em:'💵',t:'#10B981'}};
+const chIcon=c=>`<em style="--t:${CH[c].t};font-weight:700;font-size:16px;color:${CH[c].t}">${CH[c].em}</em>`;
+const nightsLbl=n=>n===1?'ليلة':n===2?'ليلتين':n<=10?`${n} ليالي`:`${n} ليلة`;
+const stayDates=st=>{const a=parseISO(st.from),b=addDays(parseISO(stayOut(st)),-1);
+  return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${AR_MONTHS[a.getMonth()]}`
+    :`${a.getDate()} ${AR_M3[a.getMonth()]} – ${b.getDate()} ${AR_M3[b.getMonth()]}`;};
+const stayUnits=()=>[...new Set(S.stays.map(x=>x.unit).filter(Boolean))];
 function walRent(){
+  const cur=esc(S.settings.cur), mk=S.stayMonth||(S.stayMonth=today().slice(0,7)), thisM=today().slice(0,7);
+  const sm=staySummary(S.stays,mk);
+  const [Y,M]=mk.split('-').map(Number), units=Math.max(1,stayUnits().length);
+  const occ=Math.min(100,Math.round(sm.nights/(dim(Y,M)*units)*100));
+  const list=S.stays.filter(st=>stayNightsIn(st,mk)||(!st.paidOn&&mk===thisM)).sort((a,b)=>b.from.localeCompare(a.from));
+  const chRows=Object.keys(CH).filter(c=>sm.by[c]).map(c=>`<div class="brow" style="--t:${CH[c].t}">
+      <div class="top"><span class="l"><span class="t">${CH[c].name}</span><span class="pct">${nightsLbl(sm.by[c].nights)}</span></span>
+        <span class="r">${money0(sm.by[c].net)}</span></div>
+      <div class="bar"><i style="width:${sm.net?sm.by[c].net/sm.net*100:0}%"></i></div></div>`).join('');
+  const stays=S.stays.length?`
+    <div class="mnav"><button id="sNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
+      <span class="lbl">${monthLabel(mk)}</span><button id="sPrev" aria-label="قبله">›</button></div>
+    <div class="hero"><div class="cap">صافي الحجوزات</div>
+      <div class="big">${money(sm.net)}<span class="cur">${cur}</span></div>
+      <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>إشغال <b>${occ}%</b></span><span>حجوزات <b>${sm.count}</b></span></div>
+      ${sm.fees>0?`<div class="cmp">عمولات المنصات <span class="num">${money0(sm.fees)}</span> ${cur}</div>`:''}</div>
+    ${sm.pending>0?`<div class="banner" style="margin-top:12px">مستني يوصلك <b class="num">${money0(sm.pending)} ${cur}</b> من ${sm.pendingN===1?'حجز':sm.pendingN+' حجوزات'} — دوس على الحجز لما الفلوس تنزل.</div>`:''}
+    ${chRows?`<div class="card"><h3>حسب المصدر</h3>${chRows}</div>`:''}
+    <div class="list" style="margin-top:12px">${list.length?list.map(st=>`<button class="item" data-stay="${st.id}">${chIcon(st.channel)}
+        <span class="nm">${esc(st.guest||CH[st.channel].name)}${st.unit?' — '+esc(st.unit):''}
+          <small>${stayDates(st)} · ${nightsLbl(st.nights)} · ${CH[st.channel].name}${st.paidOn?'':' · <b style="color:var(--brand)">مستني التحويل</b>'}</small></span>
+        <span class="hint">${money0(stayNet(st))}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')
+      :`<div class="item" style="color:var(--dim);font-size:13px">مفيش حجوزات في ${monthLabel(mk)}.</div>`}</div>`
+    :`<div class="empty" style="padding:30px 20px 10px"><div class="h">مفيش حجوزات لسه</div>
+      <div class="p">سجّل كل حجز: الضيف وعدد الليالي والمبلغ، ومنين (بوكينج، Airbnb، أو مباشر)، والفلوس نزلت في أنهي حساب — وهيتسجل دخل لوحده.</div></div>`;
+  return `<div class="sec" style="margin-top:14px"><h2>حجوزات بالليلة <button id="addStay">+ حجز جديد</button></h2></div>
+    ${stays}
+    <div class="sec"><h2>عقود شهرية</h2></div>${walContracts()}<div style="height:14px"></div>`;
+}
+function walContracts(){
   const cur=esc(S.settings.cur);
-  if(!S.rents.length) return `<div class="empty"><div class="h">مفيش عقود إيجار</div>
-      <div class="p">سجّل الشقة والساكن والإيجار الشهري، وعلّم الشهور المدفوعة — والتطبيق يحسب المتأخر.</div></div>
-    <button class="ghost" id="addRent">+ عقد إيجار</button>`;
+  if(!S.rents.length) return `<button class="ghost" id="addRent">+ عقد إيجار شهري</button>`;
   const now=new Date();
   let due=0, coll=0;
   const cards=S.rents.map(r=>{
@@ -1716,7 +1753,7 @@ function walRent(){
   return `<div class="duo">
       <div class="box out"><div class="v">${money0(coll)}</div><div class="l">محصّل (١٢ شهر)</div></div>
       <div class="box inn"><div class="v">${money0(due)}</div><div class="l">متأخر</div></div></div>
-    ${cards}<button class="ghost" id="addRent">+ عقد إيجار</button><div style="height:14px"></div>`;
+    ${cards}<button class="ghost" id="addRent">+ عقد إيجار شهري</button>`;
 }
 function bindWal(){
   const b=$('#walBody');
@@ -1731,6 +1768,10 @@ function bindWal(){
   if(g('addPlan')) g('addPlan').onclick=()=>planSheet(null);
   if(g('addDebt')) g('addDebt').onclick=()=>debtSheet(null);
   if(g('addRent')) g('addRent').onclick=()=>rentSheet(null);
+  if(g('addStay')) g('addStay').onclick=()=>staySheet(null);
+  b.querySelectorAll('[data-stay]').forEach(x=>x.onclick=()=>staySheet(x.dataset.stay));
+  if(g('sPrev')) g('sPrev').onclick=()=>{S.stayMonth=prevMonth(S.stayMonth);renderWal();};
+  if(g('sNext')) g('sNext').onclick=()=>{S.stayMonth=nextMonth(S.stayMonth);renderWal();};
 }
 
 function acctSheet(id){
@@ -1905,6 +1946,98 @@ function debtPaySheet(id,full){
   };
 }
 
+/* a booking's income: one tx in the log while the money has arrived, none while it's pending */
+async function syncStayTx(st){
+  const t=st.tx&&S.tx.find(x=>x.id===st.tx);
+  if(!st.paidOn){
+    if(t){ await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id); }
+    delete st.tx; return;
+  }
+  const v={kind:'inc',amount:stayNet(st),cat:st.cat,acct:st.acct,date:st.paidOn,stay:st.id,
+    note:`${CH[st.channel].name} · ${st.guest?st.guest+' · ':''}${nightsLbl(st.nights)}${st.unit?' · '+st.unit:''}`};
+  if(t){ Object.assign(t,v); await Store.put('tx',t); }
+  else{ const n={id:uid(),at:Date.now(),...v}; S.tx.push(n); await Store.put('tx',n); st.tx=n.id; }
+  sortTx();
+}
+function staySheet(id){
+  const rentCat=(catsOf('inc').find(c=>c.name.includes('إيجار'))||catsOf('inc')[0]).id;
+  const bankAcct=()=>(liveAccts().find(a=>a.type==='bank')||liveAccts()[0]).id;
+  const cashAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]).id;
+  const last=S.stays.slice().sort((a,b)=>(b.at||0)-(a.at||0))[0];
+  const st=id?S.stays.find(x=>x.id===id):{unit:last?last.unit:'',guest:'',from:today(),nights:1,total:'',fee:0,
+    channel:'booking',paidOn:'',acct:bankAcct(),cat:last?last.cat:rentCat,note:''};
+  let ch=st.channel, acctTouched=!!id;
+  sheet(`<h2>${id?'تعديل الحجز':'حجز جديد'}</h2>
+    <div class="f"><label>المصدر</label><div class="seg" id="sCh">${Object.keys(CH).map(c=>
+      `<button data-ch="${c}" aria-pressed="${c===ch}">${CH[c].name}</button>`).join('')}</div></div>
+    <div class="f"><div class="row2">
+      <div><label>الوحدة</label><input id="sU" maxlength="30" list="sUL" placeholder="شاليه الساحل" value="${esc(st.unit||'')}">
+        <datalist id="sUL">${stayUnits().map(u=>`<option value="${esc(u)}">`).join('')}</datalist></div>
+      <div><label>اسم الضيف</label><input id="sG" maxlength="40" value="${esc(st.guest||'')}"></div>
+    </div></div>
+    <div class="f"><div class="row2">
+      <div><label>يوم الوصول</label><input id="sF" type="date" value="${st.from}"></div>
+      <div><label>عدد الليالي</label><input id="sN" type="number" inputmode="numeric" min="1" step="1" value="${st.nights}"></div>
+    </div></div>
+    <div class="f"><div class="row2">
+      <div><label>إجمالي الحجز</label><input id="sT" type="number" inputmode="decimal" min="0" step="0.01" value="${st.total}"></div>
+      <div id="sFeeW"><label>عمولة المنصة</label><input id="sFee" type="number" inputmode="decimal" min="0" step="0.01" value="${st.fee||0}"></div>
+    </div><div id="sCalc" style="font-size:12.5px;color:var(--dim);margin-top:7px;min-height:18px"></div></div>
+    <label class="chk" style="margin-bottom:13px"><input type="checkbox" id="sP" ${st.paidOn?'checked':''}><span>الفلوس وصلت — سجّلها دخل</span></label>
+    <div class="f" id="sPW"><div class="row2">
+      <div><label>وصلت في حساب</label><select id="sA">${acctOpts(st.acct)}</select></div>
+      <div><label>يوم ما وصلت</label><input id="sD" type="date" value="${st.paidOn||today()}"></div>
+    </div></div>
+    <div class="f"><label>تصنيف الدخل</label><select id="sC">
+      ${catsOf('inc').map(c=>`<option value="${c.id}" ${c.id===st.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="f"><label>ملاحظة</label><input id="sNt" maxlength="60" value="${esc(st.note||'')}"></div>
+    <div class="acts">
+      ${id?'<button class="del" id="sDel">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
+      <button class="go" id="sOk">حفظ</button></div>`);
+  const upd=()=>{
+    $('#sFeeW').style.visibility=ch==='direct'?'hidden':'visible';
+    $('#sPW').hidden=!$('#sP').checked;
+    const n=Math.max(1,Number($('#sN').value)|0), T=Number($('#sT').value)||0, F=ch==='direct'?0:Number($('#sFee').value)||0;
+    const c=esc(S.settings.cur);
+    $('#sCalc').innerHTML=T>0?`الليلة <span class="num">${money(T/n)}</span> ${c}${F>0?` · الصافي <b class="num" style="color:var(--chalk)">${money(T-F)}</b> ${c}`:''}`:'';
+  };
+  $('#sCh').onclick=e=>{
+    const b=e.target.closest('[data-ch]'); if(!b) return;
+    ch=b.dataset.ch;
+    $('#sCh').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.ch===ch));
+    /* platforms pay into the bank, direct guests usually pay cash */
+    if(!acctTouched) $('#sA').value=ch==='direct'?cashAcct():bankAcct();
+    if(!id && ch==='direct') $('#sP').checked=true;
+    upd();
+  };
+  $('#sA').onchange=()=>{acctTouched=true;};
+  ['sN','sT','sFee','sP'].forEach(k=>$('#'+k).addEventListener('input',upd));
+  $('#sP').onchange=upd;
+  upd();
+  $('#sOk').onclick=async()=>{
+    const n=Number($('#sN').value)|0, T=Number($('#sT').value), F=ch==='direct'?0:Number($('#sFee').value)||0;
+    if(!(n>=1)){ $('#sN').focus(); return toast('عدد الليالي لازم يكون ١ أو أكتر'); }
+    if(!(T>0)){ $('#sT').focus(); return; }
+    if(F<0||F>T){ $('#sFee').focus(); return toast('العمولة لازم تكون أقل من الإجمالي'); }
+    const v={unit:$('#sU').value.trim(),guest:$('#sG').value.trim(),from:$('#sF').value||today(),nights:n,total:T,fee:F,
+      channel:ch,paidOn:$('#sP').checked?($('#sD').value||today()):'',acct:$('#sA').value,cat:$('#sC').value,note:$('#sNt').value.trim()};
+    let rec=st;
+    if(id) Object.assign(st,v);
+    else{ rec={id:uid(),at:Date.now(),...v}; S.stays.push(rec); }
+    await syncStayTx(rec);
+    await Store.put('stay',rec);
+    if(!id) S.stayMonth=rec.from.slice(0,7);
+    closeSheet(); renderWal(); renderRail(); renderAccts(); renderLog();
+    toast(rec.paidOn?`اتسجل دخل <span class="a">+${money(stayNet(rec))}</span> ${esc(S.settings.cur)}`:'اتسجل الحجز — مستني التحويل');
+  };
+  const d=$('#sDel');
+  if(d) d.onclick=async()=>{
+    if(!confirm(st.tx?'حذف الحجز؟ الدخل اللي اتسجل معاه هيتمسح كمان.':'حذف الحجز ده؟')) return;
+    st.paidOn=''; await syncStayTx(st);
+    await Store.del('stay',id); S.stays=S.stays.filter(x=>x.id!==id);
+    closeSheet(); renderWal(); renderRail(); renderAccts(); renderLog(); toast('اتحذف');
+  };
+}
 function rentSheet(id){
   const r=id?S.rents.find(x=>x.id===id)
     :{tenant:'',unit:'',amount:'',dueDay:1,start:today(),note:'',paid:[],
@@ -2260,11 +2393,15 @@ function exportCsv(){
     csv+='\n\n'+['الإيجارات','الساكن','الوحدة','الإيجار','شهور محصّلة','محصّل جزئياً'].map(q).join(',')+'\n'+
       S.rents.map(r=>['',r.tenant,r.unit||'',r.amount,(r.paid||[]).join(' '),
         Object.entries(r.part||{}).map(([m,v])=>`${m} (${v})`).join(' ')].map(q).join(',')).join('\n');
+  if(S.stays.length)
+    csv+='\n\n'+['الحجوزات','الوحدة','الضيف','الوصول','الليالي','الإجمالي','العمولة','الصافي','المصدر','وصلت يوم','الحساب'].map(q).join(',')+'\n'+
+      S.stays.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(st=>['',st.unit||'',st.guest||'',st.from,st.nights,st.total,st.fee||0,stayNet(st),
+        CH[st.channel].name,st.paidOn||'',st.paidOn?acctOf(st.acct).name:''].map(q).join(',')).join('\n');
   download(`masareef-${today()}.csv`,csv,'text/csv;charset=utf-8');
   toast('اتصدر ملف CSV');
 }
 const backupJson=()=>JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
-  tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents});
+  tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents,stay:S.stays});
 async function exportJson(){
   const name=`masareef-backup-${today()}.json`, text=backupJson();
   /* on phones the share sheet saves straight to Files / Drive / WhatsApp */
@@ -2285,7 +2422,7 @@ function importJson(){
     try{ d=JSON.parse(await f.text()); }catch(e){ return toast('الملف مش صالح'); }
     if(checkBackup(d)) return toast('الملف مش صالح');
     if(!confirm('الاسترجاع هيمسح البيانات الحالية ويحل مكانها. هنحفظلك نسخة من بياناتك الحالية الأول. تكمل؟')) return;
-    if(S.tx.length||S.debts.length||S.rents.length||S.plans.length||S.recur.length) download(`masareef-before-restore-${today()}.json`,backupJson(),'application/json');
+    if(S.tx.length||S.debts.length||S.rents.length||S.stays.length||S.plans.length||S.recur.length) download(`masareef-before-restore-${today()}.json`,backupJson(),'application/json');
 
     let accts=d.acct||[];
     if(!accts.length) accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
@@ -2299,7 +2436,7 @@ function importJson(){
     if(!Array.isArray(settings.currencies)) settings.currencies=[];
 
     /* one transaction: either the whole backup lands or the current data stays untouched */
-    const lists={tx:d.tx,cats:d.cats,recur:d.recur||[],debt:d.debt||[],recon:d.recon||[],acct:accts,plan:d.plan||[],rent:d.rent||[]};
+    const lists={tx:d.tx,cats:d.cats,recur:d.recur||[],debt:d.debt||[],recon:d.recon||[],acct:accts,plan:d.plan||[],rent:d.rent||[],stay:d.stay||[]};
     const ops=Object.keys(lists).map(k=>['clear',k]);
     for(const k in lists) for(const x of lists[k]) ops.push(['put',k,x]);
     ops.push(['put','meta',{id:'settings',v:settings}]);
@@ -2309,7 +2446,7 @@ function importJson(){
     S.accts=accts.slice().sort((a,b)=>a.order-b.order);
     S.cats=d.cats.slice().sort((a,b)=>a.order-b.order);
     S.tx=d.tx.slice(); sortTx();
-    S.recur=lists.recur; S.debts=lists.debt; S.plans=lists.plan; S.rents=lists.rent;
+    S.recur=lists.recur; S.debts=lists.debt; S.plans=lists.plan; S.rents=lists.rent; S.stays=lists.stay;
     S.recons=lists.recon.slice().sort((a,b)=>a.date.localeCompare(b.date));
     S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;
     S.lastCat.ref=S.lastCat.exp;
