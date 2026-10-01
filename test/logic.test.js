@@ -214,3 +214,18 @@ test('dueItems', () => {
   assert.equal(rent.late, true);
   assert.equal(items[3].late, false);
 });
+
+test('debtFlows moves money through the chosen accounts', () => {
+  const sumFor = (d, id) => L.debtFlows(d).filter(f => f.acct === id).reduce((s, f) => s + f.amount, 0);
+  // lent 500 cash, got 200 back by bank and 300 back in cash
+  const lent = { dir: 'out', amount: 500, date: '2026-09-01', acct: 'cash',
+    pays: [{ date: '2026-09-05', amount: 200, acct: 'bank' }, { date: '2026-09-09', amount: 300, acct: 'cash' }] };
+  assert.equal(sumFor(lent, 'cash'), -200);
+  assert.equal(sumFor(lent, 'bank'), 200);
+  // borrowed 1000 into the bank, repaid 400 from cash
+  const owed = { dir: 'in', amount: 1000, date: '2026-09-01', acct: 'bank', pays: [{ date: '2026-09-02', amount: 400, acct: 'cash' }] };
+  assert.equal(sumFor(owed, 'bank'), 1000);
+  assert.equal(sumFor(owed, 'cash'), -400);
+  // no account (older debts) leaves balances alone
+  assert.deepEqual(L.debtFlows({ dir: 'out', amount: 50, date: '2026-09-01', pays: [{ amount: 50, date: '2026-09-02' }] }), []);
+});
