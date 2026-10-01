@@ -4,43 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <title>مصاريفي</title>
-<meta name="theme-color" content="#1A1520" id="themeMeta">
+<meta name="theme-color" content="#0B0E11" id="themeMeta">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="مصاريفي">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ── theme tokens ───────────────────────────────── */
 :root, body.dark{
-  --ink:#1A1520; --ink2:#231C2B; --ink3:#30263B; --tile:#2C2336;
+  --ink:#0B0E11; --ink2:#15191E; --ink3:#232930; --tile:#1D2228;
   --line:rgba(255,255,255,.07); --lift:none;
-  --chalk:#EFEBF4; --dim:#968CA3;
-  --gold:#E5AB52; --mint:#4FD1A5; --iris:#8B8CF5; --red:#F2726F;
-  --onAcc:#241C09; --shadow:0 12px 32px rgba(0,0,0,.5);
-  --scrim:rgba(10,7,14,.7);
+  --chalk:#F1F4F6; --dim:#8B949D;
+  --brand:#10B981; --mint:#22C55E; --iris:#3B82F6; --red:#F05252;
+  --onAcc:#FFFFFF; --shadow:0 12px 32px rgba(0,0,0,.55);
+  --scrim:rgba(4,6,8,.72);
 }
 body.light{
-  --ink:#F7F4EF; --ink2:#FFFFFF; --ink3:#EAE4DA; --tile:#F4EFE7;
-  --line:rgba(36,28,45,.08); --lift:0 1px 2px rgba(40,25,60,.05),0 4px 14px rgba(40,25,60,.05);
-  --chalk:#221A2B; --dim:#776C82;
-  --gold:#A96F12; --mint:#0E8F63; --iris:#4F50C4; --red:#C43B37;
-  --onAcc:#FFFFFF; --shadow:0 10px 30px rgba(40,25,60,.16);
-  --scrim:rgba(36,28,45,.45);
+  --ink:#F2F4F6; --ink2:#FFFFFF; --ink3:#E6E9ED; --tile:#F2F4F6;
+  --line:rgba(15,23,42,.07); --lift:0 1px 2px rgba(15,23,42,.04),0 6px 18px rgba(15,23,42,.05);
+  --chalk:#0F1720; --dim:#69737D;
+  --brand:#059669; --mint:#16A34A; --iris:#2563EB; --red:#DC2626;
+  --onAcc:#FFFFFF; --shadow:0 12px 32px rgba(15,23,42,.16);
+  --scrim:rgba(15,23,42,.45);
 }
 :root{
   --ar:'IBM Plex Sans Arabic',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:var(--ar);
-  --pad:16px; --r:16px; --accent:var(--gold);
+  --pad:16px; --r:16px; --accent:var(--brand);
   --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
 }
-body.k-inc{--accent:var(--mint)}
-body.k-trf{--accent:var(--iris)}
-body.k-ref{--accent:var(--mint)}
+/* the gradient card behind the amount — one per entry kind */
+:root{--gradBrand:linear-gradient(135deg,#047857 0%,#10B981 62%,#34D399 100%);--grad:var(--gradBrand)}
+body.k-inc{--accent:var(--mint);--grad:linear-gradient(135deg,#15803D 0%,#22C55E 60%,#86EFAC 100%)}
+body.k-trf{--accent:var(--iris);--grad:linear-gradient(135deg,#1D4ED8 0%,#3B82F6 60%,#93C5FD 100%)}
+body.k-ref{--accent:var(--mint);--grad:linear-gradient(135deg,#0F766E 0%,#14B8A6 60%,#5EEAD4 100%)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden}
 body{background:var(--ink);color:var(--chalk);font-family:var(--ar);font-size:15px;line-height:1.5;
@@ -70,34 +72,38 @@ input,select,textarea{font-family:inherit;font-size:16px;color:var(--chalk)}
 .rail .mtd{font-size:11px;color:var(--dim);text-align:end;flex:none;line-height:1.35;
            background:var(--ink2);border:1px solid var(--line);box-shadow:var(--lift);border-radius:12px;padding:7px 11px}
 .rail .mtd b{display:block;color:var(--chalk);font-weight:600;font-size:15px;margin-top:1px;font-variant-numeric:tabular-nums}
-.rail .act{font-size:12.5px;color:var(--gold);font-weight:600;padding:6px 11px;border-radius:999px;
-           background:color-mix(in srgb,var(--gold) 12%,transparent)}
-.rail .duebtn{display:block;font-size:11.5px;font-weight:600;color:var(--gold);margin-top:3px;text-align:start}
+.rail .act{font-size:12.5px;color:var(--brand);font-weight:600;padding:6px 11px;border-radius:999px;
+           background:color-mix(in srgb,var(--brand) 12%,transparent)}
+.rail .duebtn{display:block;font-size:11.5px;font-weight:600;color:var(--brand);margin-top:3px;text-align:start}
 .rail .duebtn.late{color:var(--red)}
 .rail .duebtn[hidden]{display:none}
 
 .kinds{display:flex;flex:none;position:relative;margin:2px var(--pad) 0;padding:4px;border-radius:13px;
-        background:var(--ink2);border:1px solid var(--line)}
+        background:var(--ink3);border:0}
 .kinds button{flex:1;padding:8px 2px;font-size:13px;font-weight:600;color:var(--dim);white-space:nowrap;
               position:relative;z-index:1;transition:color .2s}
 .kinds button[aria-pressed="true"]{color:var(--chalk)}
 .kinds .ind{position:absolute;top:4px;bottom:4px;right:4px;border-radius:9px;
-            background:color-mix(in srgb,var(--accent) 20%,var(--ink2));
-            box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent);
+            background:var(--ink2);box-shadow:0 1px 3px rgba(0,0,0,.18);
             transition:transform .22s cubic-bezier(.2,.9,.3,1),width .2s,background .2s}
 
 /* entry screen: the amount and the keypad share whatever height is left
    (after the notch, the home bar and the strips), so the save button always fits */
 #v-entry{overflow:hidden}
-.readout{flex:1 1 auto;min-height:92px;padding:12px var(--pad) 10px;text-align:center;display:flex;flex-direction:column;justify-content:center}
+.readout{flex:1 1 auto;min-height:118px;margin:12px var(--pad) 12px;padding:14px 16px;text-align:center;
+         display:flex;flex-direction:column;justify-content:center;border-radius:22px;color:#fff;
+         background:var(--grad);position:relative;overflow:hidden;transition:background .3s;
+         box-shadow:0 10px 28px color-mix(in srgb,var(--accent) 28%,transparent)}
+/* soft light sheen on the card */
+.readout::before{content:"";position:absolute;width:260px;height:260px;border-radius:50%;top:-150px;left:-80px;
+         background:radial-gradient(circle,rgba(255,255,255,.22),transparent 70%);pointer-events:none}
+.readout>*{position:relative}
 .readout .amt{font-family:var(--mono);font-weight:600;font-size:clamp(40px,14vw,60px);letter-spacing:-.02em;
               line-height:1;font-variant-numeric:tabular-nums;direction:ltr;display:block}
-body.k-inc .readout .amt,body.k-ref .readout .amt{color:var(--mint)}
-body.k-trf .readout .amt{color:var(--iris)}
-.readout .amt.zero{color:var(--ink3)}
-.readout .cur{font-size:.42em;color:var(--dim);font-weight:400;margin-inline-start:.3em;letter-spacing:0}
-.readout .tag{margin:12px auto 0;font-size:12.5px;color:var(--dim);min-height:19px;padding:5px 12px;
-               border-radius:999px;background:var(--ink2);border:1px solid var(--line);max-width:100%}
+.readout .amt.zero{color:rgba(255,255,255,.55)}
+.readout .cur{font-size:.42em;color:rgba(255,255,255,.75);font-weight:400;margin-inline-start:.3em;letter-spacing:0}
+.readout .tag{margin:12px auto 0;font-size:12.5px;color:rgba(255,255,255,.92);min-height:19px;padding:5px 12px;
+               border-radius:999px;background:rgba(255,255,255,.16);max-width:100%}
 .readout .tag b{font-weight:600}
 
 .striplbl{font-size:11px;color:var(--dim);padding:0 var(--pad) 5px;flex:none;font-weight:500}
@@ -105,9 +111,10 @@ body.k-trf .readout .amt{color:var(--iris)}
 .c{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;
    border:1px solid var(--line);background:var(--ink2);font-size:13px;color:var(--dim);box-shadow:var(--lift);
    transition:border-color .14s,color .14s,background .14s}
-.c em{font-style:normal;font-size:15px;line-height:1}
-.c[aria-pressed="true"]{border-color:color-mix(in srgb,var(--accent) 70%,transparent);color:var(--chalk);font-weight:600;
-   background:color-mix(in srgb,var(--accent) 15%,var(--ink2))}
+.c em{font-style:normal;font-size:14px;line-height:1;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+      background:color-mix(in srgb,var(--t,var(--dim)) 20%,transparent);margin-inline-start:-6px}
+.c[aria-pressed="true"]{border-color:var(--accent);color:var(--chalk);font-weight:600;
+   background:color-mix(in srgb,var(--accent) 10%,var(--ink2));box-shadow:0 0 0 1px var(--accent) inset}
 .c .bal{font-family:var(--mono);font-size:11px;opacity:.75;direction:ltr}
 .q{flex:none;display:flex;align-items:center;gap:6px;padding:7px 11px;border-radius:12px;
    background:var(--ink2);border:1px solid var(--line);font-size:12.5px;color:var(--dim);box-shadow:var(--lift)}
@@ -118,16 +125,16 @@ body.k-trf .readout .amt{color:var(--iris)}
 /* keypad — forced LTR so 1 2 3 read left→right like a phone */
 .keys{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:8px;padding:0 var(--pad);
       direction:ltr;flex:3 1 auto;min-height:172px;max-height:290px}
-.k{min-height:0;border-radius:14px;background:var(--ink2);font-family:var(--mono);font-size:23px;
-   font-weight:500;transition:background .1s,transform .08s;box-shadow:var(--lift);font-variant-numeric:tabular-nums}
+.k{min-height:0;border-radius:16px;background:transparent;font-family:var(--mono);font-size:27px;
+   font-weight:500;transition:background .12s,transform .08s;font-variant-numeric:tabular-nums}
 .k:active{transform:scale(.97)}
 .k:active{background:var(--ink3)}
-.k.fn{font-family:var(--ar);font-size:19px;color:var(--dim);background:transparent;box-shadow:none}
+.k.fn{font-family:var(--ar);font-size:21px;color:var(--dim)}
 
 .savebar{padding:12px var(--pad) 10px;flex:none;display:flex;gap:8px}
 .save{flex:1;padding:16px;border-radius:var(--r);background:var(--accent);color:var(--onAcc);
       font-weight:700;font-size:16px;transition:opacity .14s,transform .08s;
-      box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 30%,transparent)}
+      box-shadow:0 8px 20px color-mix(in srgb,var(--accent) 32%,transparent)}
 .save:active{transform:scale(.985)}
 .save:disabled{opacity:.3;box-shadow:none}
 .mini{width:52px;border-radius:var(--r);background:var(--ink2);border:1px solid var(--line);box-shadow:var(--lift);
@@ -145,12 +152,19 @@ nav button{padding:8px 0 7px;font-size:11px;color:var(--dim);display:flex;flex-d
 nav button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;
                stroke-linecap:round;stroke-linejoin:round;padding:4px 16px;box-sizing:content-box;border-radius:999px;
                transition:background .2s}
-nav button.on{color:var(--gold);font-weight:600}
-nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
+nav button.on{color:var(--brand);font-weight:600}
+nav button.on svg{background:color-mix(in srgb,var(--brand) 14%,transparent)}
+nav button.fab{color:var(--dim)}
+nav button.fab svg{width:26px;height:26px;padding:13px;margin-top:-24px;border-radius:50%;stroke-width:2.2;
+       color:#fff;background:var(--brand)!important;
+       box-shadow:0 8px 20px color-mix(in srgb,var(--brand) 40%,transparent),0 0 0 5px var(--ink)}
+/* on the entry screen itself the + sits in the bar, clear of the save button */
+nav button.fab.on{color:var(--brand)}
+nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;border-radius:999px;box-shadow:none;stroke-width:2}
 
 .searchbar{padding:12px var(--pad) 0;flex:none}
 .searchbar input{width:100%;padding:12px 14px;border-radius:12px;background:var(--ink2);border:1px solid var(--line);box-shadow:var(--lift)}
-.searchbar input:focus{border-color:var(--gold);outline:none}
+.searchbar input:focus{border-color:var(--brand);outline:none}
 
 .daygrp{margin-top:18px}
 .dayhd{display:flex;justify-content:space-between;align-items:baseline;padding:0 2px 8px}
@@ -159,8 +173,8 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .roll{background:var(--ink2);border-radius:var(--r);overflow:hidden}
 .row{display:flex;align-items:center;gap:12px;padding:11px 13px;width:100%;text-align:start}
 .row:active{background:var(--ink3)}
-.row em,.item em{font-style:normal;font-size:19px;line-height:1;flex:none;width:38px;height:38px;border-radius:12px;
-        background:var(--tile);display:grid;place-items:center;text-align:center}
+.row em,.item em{font-style:normal;font-size:18px;line-height:1;flex:none;width:40px;height:40px;border-radius:50%;
+        background:color-mix(in srgb,var(--t,var(--dim)) 16%,var(--ink2));display:grid;place-items:center;text-align:center}
 .row .meta{flex:1;min-width:0}
 .row .nm{font-size:14.5px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .nt{font-size:11.5px;color:var(--dim);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -178,7 +192,13 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
              border:1px solid var(--line);box-shadow:var(--lift)}
 .mnav button:disabled{opacity:.3}
 .mnav .lbl{font-size:15px;font-weight:700}
-.hero{padding:16px 0 18px;text-align:center}
+.hero,.worth{margin-top:12px;padding:22px 18px!important;text-align:center;border-radius:22px;color:#fff;
+      background:var(--gradBrand);position:relative;overflow:hidden;box-shadow:0 10px 28px color-mix(in srgb,var(--brand) 25%,transparent)}
+.hero::before,.worth::before{content:"";position:absolute;width:300px;height:300px;border-radius:50%;top:-170px;left:-90px;
+      background:radial-gradient(circle,rgba(255,255,255,.22),transparent 70%);pointer-events:none}
+.hero>*,.worth>*{position:relative}
+.hero .cap,.worth .cap,.hero .cmp,.hero .legs,.worth .sub,.hero .big .cur,.worth .v .cur{color:rgba(255,255,255,.82)!important}
+.hero .legs b,.hero .pos,.hero .neg,.hero .up,.hero .down{color:#fff!important}
 .hero .cap{font-size:12.5px;color:var(--dim);margin-bottom:8px;font-weight:500}
 .hero .big{font-family:var(--mono);font-size:clamp(36px,12vw,50px);font-weight:700;letter-spacing:-.02em;
            line-height:1;direction:ltr;font-variant-numeric:tabular-nums}
@@ -192,8 +212,8 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .card{background:var(--ink2);border-radius:var(--r);padding:16px;margin-top:12px}
 .card h3{margin:0 0 14px;font-size:14px;font-weight:700;color:var(--chalk);
          display:flex;justify-content:space-between;align-items:center;gap:8px}
-.card h3 button{font-size:12px;color:var(--gold);font-weight:600;flex:none;padding:4px 10px;border-radius:999px;
-                 background:color-mix(in srgb,var(--gold) 12%,transparent)}
+.card h3 button{font-size:12px;color:var(--brand);font-weight:600;flex:none;padding:4px 10px;border-radius:999px;
+                 background:color-mix(in srgb,var(--brand) 12%,transparent)}
 .card .foot{margin-top:12px;font-size:12px;color:var(--dim);text-align:center;line-height:1.65}
 .card .foot b{color:var(--chalk);font-weight:600}
 .card .foot .neg{color:var(--red)} .card .foot .pos{color:var(--mint)}
@@ -215,23 +235,24 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .brow .top .r{font-family:var(--mono);font-weight:500;flex:none;font-variant-numeric:tabular-nums;direction:ltr}
 .brow .top .pct{color:var(--dim);font-size:11.5px;flex:none}
 .bar{height:6px;border-radius:3px;background:var(--ink3);overflow:hidden}
-.bar i{display:block;height:100%;border-radius:3px;background:var(--gold)}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--t,var(--brand))}
 .bar.mintbar i{background:var(--mint)}
 .bar.irisbar i{background:var(--iris)}
-.bar.over i{background:var(--red)}
+.brow[style] .bar i{background:var(--t)}
+.bar.over i{background:var(--red)!important}
 .bar.tall{height:9px;border-radius:4px}
 .bud{font-size:11px;color:var(--dim);margin-top:4px}
 .bud.over{color:var(--red)}
 
 .days{display:flex;align-items:flex-end;gap:2px;height:74px;direction:ltr}
 .days i{flex:1;background:var(--ink3);border-radius:2px 2px 0 0;min-height:2px}
-.days i.hot{background:var(--gold)}
+.days i.hot{background:var(--brand)}
 .dayax{display:flex;justify-content:space-between;margin-top:7px;font-size:10px;color:var(--dim);
        direction:ltr;font-family:var(--mono)}
 .yr{display:flex;align-items:flex-end;gap:5px;height:88px;direction:ltr}
 .yr .mo{flex:1;display:flex;align-items:flex-end;gap:1.5px;height:100%}
 .yr .mo i{flex:1;border-radius:2px 2px 0 0;min-height:2px;background:var(--ink3)}
-.yr .mo i.e{background:var(--gold)} .yr .mo i.i{background:var(--mint)}
+.yr .mo i.e{background:var(--brand)} .yr .mo i.i{background:var(--mint)}
 .yr .mo.cur i.e{box-shadow:0 0 0 1px var(--chalk) inset}
 .yrax{display:flex;gap:5px;margin-top:7px;direction:ltr}
 .yrax span{flex:1;text-align:center;font-size:9px;color:var(--dim)}
@@ -245,7 +266,7 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .sec{margin-top:22px}
 .sec>h2{margin:0 0 10px;padding:0 2px;font-size:13px;font-weight:700;color:var(--dim);
         display:flex;justify-content:space-between;align-items:center}
-.sec>h2 button{font-size:12px;color:var(--gold);font-weight:600}
+.sec>h2 button{font-size:12px;color:var(--brand);font-weight:600}
 .list{background:var(--ink2);border-radius:var(--r);overflow:hidden}
 .item{display:flex;align-items:center;gap:12px;padding:11px 13px;width:100%;text-align:start;min-height:58px}
 .item .nm{flex:1;font-size:14.5px;min-width:0;font-weight:500}
@@ -259,10 +280,10 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
        color:var(--dim);font-size:14px;font-weight:600;margin-top:10px}
 .ghost:active{background:var(--ink2)}
 .danger{color:var(--red)}
-.banner{background:color-mix(in srgb,var(--gold) 13%,transparent);
-        border:1px solid color-mix(in srgb,var(--gold) 38%,transparent);
+.banner{background:color-mix(in srgb,var(--brand) 13%,transparent);
+        border:1px solid color-mix(in srgb,var(--brand) 38%,transparent);
         border-radius:var(--r);padding:13px;font-size:13px;line-height:1.65;margin-top:16px}
-.banner b{color:var(--gold)}
+.banner b{color:var(--brand)}
 #memWarn{position:fixed;top:0;left:0;right:0;z-index:60;background:var(--red);color:#fff;
          padding:calc(var(--sat) + 9px) 16px 9px;font-size:12.5px;line-height:1.6;text-align:center}
 #memWarn[hidden]{display:none}
@@ -275,12 +296,12 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .duo .out .v{color:var(--mint)} .duo .inn .v{color:var(--red)}
 
 .tabs{display:flex;gap:7px;padding:14px 0 2px;flex:none;overflow-x:auto}
-.tabs button{flex:none;padding:8px 16px;border-radius:999px;background:var(--ink2);box-shadow:var(--lift);
+.tabs button{flex:none;padding:8px 16px;border-radius:999px;background:var(--ink2);
              border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--dim)}
-.tabs button[aria-pressed="true"]{border-color:color-mix(in srgb,var(--gold) 70%,transparent);color:var(--chalk);
-             background:color-mix(in srgb,var(--gold) 15%,var(--ink2))}
+.tabs button[aria-pressed="true"]{border-color:color-mix(in srgb,var(--brand) 70%,transparent);color:var(--chalk);
+             background:color-mix(in srgb,var(--brand) 15%,var(--ink2))}
 
-.worth{text-align:center;padding:20px 0 6px}
+.worth{margin-top:16px}
 .worth .cap{font-size:12.5px;color:var(--dim);margin-bottom:8px;font-weight:500}
 .worth .v{font-family:var(--mono);font-size:clamp(36px,12vw,50px);font-weight:700;letter-spacing:-.02em;
           direction:ltr;font-variant-numeric:tabular-nums;line-height:1}
@@ -305,24 +326,24 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .f label{display:block;font-size:12.5px;color:var(--dim);margin-bottom:6px;font-weight:500}
 .f input,.f select,.f textarea{width:100%;padding:12px 13px;border-radius:12px;background:var(--ink);
        border:1px solid var(--ink3);resize:none;transition:border-color .14s,box-shadow .14s}
-.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--gold);outline:none;
-       box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 20%,transparent)}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--brand);outline:none;
+       box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}
 .f .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .f .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .seg{display:flex;gap:7px}
 .seg button{flex:1;padding:11px 4px;border-radius:12px;background:var(--ink2);border:1px solid var(--line);box-shadow:var(--lift);
             font-size:13px;font-weight:600;color:var(--dim)}
-.seg button[aria-pressed="true"]{border-color:color-mix(in srgb,var(--gold) 70%,transparent);color:var(--chalk);
-            background:color-mix(in srgb,var(--gold) 15%,var(--ink2))}
+.seg button[aria-pressed="true"]{border-color:color-mix(in srgb,var(--brand) 70%,transparent);color:var(--chalk);
+            background:color-mix(in srgb,var(--brand) 15%,var(--ink2))}
 .chk{display:flex;align-items:flex-start;gap:9px;font-size:13px;line-height:1.5;padding:12px;
      background:var(--ink);border-radius:12px;border:1px solid var(--ink3)}
-.chk input{width:19px;height:19px;flex:none;margin:1px 0 0;accent-color:var(--gold)}
+.chk input{width:19px;height:19px;flex:none;margin:1px 0 0;accent-color:var(--brand)}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:9px 0}
 .kv b{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;direction:ltr}
 .kv.big{font-size:15px}
 .acts{display:flex;gap:9px;margin-top:17px}
 .acts button{flex:1;padding:14px;border-radius:var(--r);font-weight:600;font-size:15px}
-.acts .go{background:var(--gold);color:var(--onAcc);box-shadow:0 6px 18px color-mix(in srgb,var(--gold) 28%,transparent)}
+.acts .go{background:var(--brand);color:var(--onAcc);box-shadow:0 6px 18px color-mix(in srgb,var(--brand) 28%,transparent)}
 .acts .no{background:var(--ink3);color:var(--chalk)}
 .acts .del{background:color-mix(in srgb,var(--red) 16%,transparent);color:var(--red)}
 .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
@@ -331,7 +352,7 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .mgrid button.paid{border-color:var(--mint);color:var(--mint);
               background:color-mix(in srgb,var(--mint) 12%,transparent)}
 .mgrid button.late{border-color:var(--red);color:var(--red)}
-.mgrid button.part{border-color:var(--gold);color:var(--gold)}
+.mgrid button.part{border-color:var(--brand);color:var(--brand)}
 
 #toast{position:fixed;top:calc(var(--sat) + 10px);left:50%;transform:translate(-50%,calc(-100% - var(--sat) - 24px));
        z-index:60;background:var(--chalk);color:var(--ink);padding:10px 12px 10px 14px;border-radius:14px;
@@ -352,7 +373,8 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
   .kinds{padding:3px}
   .kinds .ind{top:3px;bottom:3px;right:3px}
   .kinds button{padding:6px 2px}
-  .readout{padding:8px var(--pad) 6px}
+  .readout{min-height:96px;margin:8px var(--pad);padding:8px 14px}
+  .keys{min-height:160px}
   .readout .amt{font-size:clamp(34px,11vw,46px)}
   .readout .tag{margin-top:6px;padding:3px 10px}
   .c{padding:6px 11px}
@@ -440,9 +462,9 @@ nav button.on svg{background:color-mix(in srgb,var(--gold) 16%,transparent)}
   </section>
 
   <nav class="n5" id="nav">
-    <button data-go="entry" class="on"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>تسجيل</button>
     <button data-go="log"><svg viewBox="0 0 24 24"><path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>السجل</button>
     <button data-go="rep"><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>تقارير</button>
+    <button data-go="entry" class="on fab"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>تسجيل</button>
     <button data-go="wal" id="navWal"><svg viewBox="0 0 24 24"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5.5A2.5 2.5 0 0 1 3 17.5z"/><path d="M3 8.5V7a2 2 0 0 1 2-2h11"/><circle cx="16.5" cy="12.5" r="1.2"/></svg>محفظة</button>
     <button data-go="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4m0-12.8-1.4 1.4m-10 10L5.6 18.4"/></svg>إعدادات</button>
   </nav>
@@ -560,6 +582,14 @@ const today=()=>iso(new Date());
 const catOf=id=>S.cats.find(c=>c.id===id)||{id:'',emoji:'💠',name:'بدون تصنيف',kind:'exp',budget:0,fixed:false};
 const acctOf=id=>S.accts.find(a=>a.id===id)||{id:'',emoji:'💠',name:'—',type:'cash',opening:0};
 const catsOf=k=>S.cats.filter(c=>c.kind===(k==='ref'?'exp':k));
+const TONES=['#F59E0B','#3B82F6','#8B5CF6','#EC4899','#EAB308','#EF4444','#06B6D4','#F97316','#64748B','#84CC16','#14B8A6','#A855F7'];
+/* style attribute giving an icon its colour: categories by position, accounts by type */
+const tone=c=>{
+  if(!c||!c.id) return '';
+  if(c.type) return ` style="--t:${c.type==='cash'?'#10B981':'#3B82F6'}"`;
+  const i=catsOf(c.kind).findIndex(x=>x.id===c.id);
+  return i<0?'':` style="--t:${(c.kind==='inc'?['#10B981','#3B82F6','#F59E0B','#64748B']:TONES)[i%(c.kind==='inc'?4:TONES.length)]}"`;
+};
 const liveAccts=()=>S.accts.filter(a=>!a.archived);
 /* live accounts, plus the selected one even if it's closed so editing never silently moves it */
 const acctOpts=sel=>{
@@ -632,7 +662,7 @@ function applyTheme(){
   const dark = t==='dark' || (t==='auto' && mq.matches);
   document.body.classList.toggle('dark',dark);
   document.body.classList.toggle('light',!dark);
-  $('#themeMeta').setAttribute('content',dark?'#1A1520':'#F7F4EF');
+  $('#themeMeta').setAttribute('content',dark?'#0B0E11':'#F2F4F6');
 }
 mq.addEventListener('change',()=>{ if(S.settings.theme==='auto') applyTheme(); });
 
@@ -825,7 +855,7 @@ function press(k){
 function renderAccts(){
   const k=S.draft.kind, list=liveAccts();
   const chip=(a,sel)=>`<button class="c" data-a="${a.id}" aria-pressed="${sel}">
-    <em>${a.emoji}</em>${esc(a.name)}${PRO()?`<span class="bal">${money0(balance(a.id))}</span>`:''}</button>`;
+    <em${tone(a)}>${a.emoji}</em>${esc(a.name)}${PRO()?`<span class="bal">${money0(balance(a.id))}</span>`:''}</button>`;
   $('#accts').innerHTML=list.map(a=>chip(a,a.id===S.draft.acct)).join('');
   if(k==='trf') $('#toAccts').innerHTML=list.filter(a=>a.id!==S.draft.acct)
     .map(a=>chip(a,a.id===S.draft.toAcct)).join('');
@@ -846,7 +876,7 @@ $('#toAccts').addEventListener('click',e=>{
 function renderCats(){
   if(S.draft.kind==='trf'){ $('#cats').innerHTML=''; return; }
   $('#cats').innerHTML=catsOf(S.draft.kind).map(c=>
-    `<button class="c" data-cat="${c.id}" aria-pressed="${c.id===S.draft.cat}"><em>${c.emoji}</em>${esc(c.name)}</button>`).join('');
+    `<button class="c" data-cat="${c.id}" aria-pressed="${c.id===S.draft.cat}"><em${tone(c)}>${c.emoji}</em>${esc(c.name)}</button>`).join('');
   const sel=$('#cats').querySelector('[aria-pressed="true"]');
   if(sel) sel.scrollIntoView({block:'nearest',inline:'center'});
 }
@@ -903,7 +933,7 @@ function renderQuick(){
   box.hidden=false; lbl.hidden=false;
   box.innerHTML=list.map((e,i)=>{
     const c=catOf(e.cat);
-    return `<button class="q" data-q="${i}"><em>${c.emoji}</em><b>${money(e.amount)}</b></button>`;
+    return `<button class="q" data-q="${i}"><em${tone(c)}>${c.emoji}</em><b>${money(e.amount)}</b></button>`;
   }).join('');
   box._list=list;
 }
@@ -1170,14 +1200,14 @@ function renderLog(){
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
       return `<button class="row${t._new?' print':''}" data-tx="${t.id}">
-        <em>${icon}</em>
+        <em${isTrf?' style="--t:var(--iris)"':tone(catOf(t.cat))}>${icon}</em>
         <span class="meta"><span class="nm">${esc(name)}</span>${bits.length?`<span class="nt">${esc(bits.join(' · '))}</span>`:''}</span>
         ${isTrf?'':`<span class="pill">${esc(acctOf(t.acct).name)}</span>`}
         <span class="val${cls}">${sign}${money(t.amount)}</span></button>`;
     }).concat((gd[d]||[]).map(x=>{
       const plus=(x.d.dir==='in')!==x.pay;
       return `<button class="row" data-debtrow="${x.d.id}">
-        <em>${x.d.dir==='out'?'↗':'↘'}</em>
+        <em style="--t:var(--iris)">${x.d.dir==='out'?'↗':'↘'}</em>
         <span class="meta"><span class="nm">${esc(debtRowName(x))}</span><span class="nt">سلف${x.d.note&&!x.pay?' · '+esc(x.d.note):''}</span></span>
         <span class="pill">${esc(acctOf(x.acct).name)}</span>
         <span class="val trf">${plus?'+':'−'}${money(x.amount)}</span></button>`;
@@ -1341,13 +1371,13 @@ function renderRep(){
       ${isThis?`<br>${dLeft} يوم فاضل · متاح <b>${money0((B-E-res)/dLeft)}</b> ${cur} في اليوم`:''}
       <br>بالمعدل الحالي الشهر بيقفل على <b>${money0(E/dPast*D)}</b> ${cur}</div></div>`
     : `<div class="card"><h3>الميزانية</h3><div class="foot" style="margin:0">محددتش ميزانية شهرية.
-        <button id="bEdit" style="color:var(--gold);font-weight:600">حدّدها</button> وهتشوف «متاح النهاردة كام».</div></div>`;
+        <button id="bEdit" style="color:var(--brand);font-weight:600">حدّدها</button> وهتشوف «متاح النهاردة كام».</div></div>`;
 
   const mx=Math.max(I,E,1), ratio=I>0?E/I*100:0;
   const ie = I>0? `<div class="card"><h3>الدخل والمصاريف</h3>
       <div class="brow"><div class="top"><span class="l"><i class="sw" style="background:var(--mint)"></i><span class="t">الدخل</span></span>
         <span class="r">${money(I)}</span></div><div class="bar mintbar"><i style="width:${I/mx*100}%"></i></div></div>
-      <div class="brow"><div class="top"><span class="l"><i class="sw" style="background:var(--gold)"></i><span class="t">المصاريف</span></span>
+      <div class="brow"><div class="top"><span class="l"><i class="sw" style="background:var(--brand)"></i><span class="t">المصاريف</span></span>
         <span class="r">${money(E)}</span></div><div class="bar"><i style="width:${E/mx*100}%"></i></div></div>
       <div class="foot">صرفت <b>${ratio.toFixed(0)}%</b> من دخل الشهر${net>=0?` — ووفّرت <b class="pos">${money0(net)}</b> ${cur}`:` — وزيادة <b class="neg">${money0(-net)}</b> ${cur}`}</div></div>` : '';
 
@@ -1359,10 +1389,10 @@ function renderRep(){
     catsOf('exp').forEach(c=>{ const v=catNet(c.id); if(v>0){ if(c.fixed) F+=v; else V+=v; } });
     const tot=F+V;
     if(tot>0) fv=`<div class="card"><h3>ملتزم مقابل اختياري<button id="fvEdit">تعديل</button></h3>
-      <div class="split"><i style="width:${F/tot*100}%;background:var(--iris)"></i><i style="width:${V/tot*100}%;background:var(--gold)"></i></div>
+      <div class="split"><i style="width:${F/tot*100}%;background:var(--iris)"></i><i style="width:${V/tot*100}%;background:var(--brand)"></i></div>
       <div class="splegend">
         <span><i class="sw" style="background:var(--iris)"></i>ملتزم <b>${money0(F)}</b> <small style="color:var(--dim)">${(F/tot*100).toFixed(0)}%</small></span>
-        <span><i class="sw" style="background:var(--gold)"></i>اختياري <b>${money0(V)}</b> <small style="color:var(--dim)">${(V/tot*100).toFixed(0)}%</small></span>
+        <span><i class="sw" style="background:var(--brand)"></i>اختياري <b>${money0(V)}</b> <small style="color:var(--dim)">${(V/tot*100).toFixed(0)}%</small></span>
       </div>
       <div class="foot">لو ضغطت على الاختياري بالكامل تقدر توفّر لحد <b>${money0(V)}</b> ${cur} في الشهر.</div></div>`;
   }
@@ -1389,7 +1419,7 @@ function renderRep(){
     return list.map(([id,v])=>{
       const c=catOf(id), pct=total?v/total*100:0;
       const hasB=!mint&&c.budget>0, over=hasB&&v>c.budget;
-      return `<div class="brow">
+      return `<div class="brow"${tone(c)}>
         <div class="top"><span class="l"><em style="font-style:normal">${c.emoji}</em><span class="t">${esc(c.name)}</span>
           <span class="pct">${pct.toFixed(0)}%</span></span><span class="r">${money(v)}</span></div>
         <div class="bar${mint?' mintbar':''}${over?' over':''}"><i style="width:${hasB?Math.min(v/c.budget*100,100):v/max*100}%"></i></div>
@@ -1418,7 +1448,7 @@ function renderRep(){
       <div class="dayax"><span>1</span><span>${Math.ceil(D/2)}</span><span>${D}</span></div></div>`:''}
     ${top5.length?`<div class="card"><h3>أكبر ${top5.length} مصاريف</h3><div class="roll" style="background:transparent">
       ${top5.map(t=>{const c=catOf(t.cat);return `<div class="row" style="padding:9px 0">
-        <em>${c.emoji}</em><span class="meta"><span class="nm">${esc(t.note||c.name)}</span>
+        <em${tone(c)}>${c.emoji}</em><span class="meta"><span class="nm">${esc(t.note||c.name)}</span>
         <span class="nt">${dayLabel(t.date)} · ${esc(acctOf(t.acct).name)}</span></span>
         <span class="val">${money(t.amount)}</span></div>`;}).join('<div class="perf"></div>')}
       </div></div>`:''}` + (PRO()?yearCard():'');
@@ -1445,7 +1475,7 @@ function yearCard(){
       <i class="e" style="height:${Math.max(d.e,0)/max*100}%"></i><i class="i" style="height:${d.i/max*100}%"></i></div>`).join('')}</div>
     <div class="yrax">${data.map((d,i)=>`<span>${i%2===0?AR_M3[+d.m.slice(5)-1]:''}</span>`).join('')}</div>
     <div class="splegend" style="justify-content:center;gap:18px">
-      <span><i class="sw" style="background:var(--gold)"></i>مصاريف</span>
+      <span><i class="sw" style="background:var(--brand)"></i>مصاريف</span>
       <span><i class="sw" style="background:var(--mint)"></i>دخل</span></div>
     ${avg?`<div class="foot">متوسط مصاريفك الشهري <b>${money0(avg)}</b> ${esc(S.settings.cur)}</div>`:''}</div>`;
 }
@@ -1472,9 +1502,9 @@ function fixedSheet(){
   sheet(`<h2>ملتزم مقابل اختياري</h2>
     <p class="lede">علّم التصنيفات اللي مش بتقدر تقلّلها (إيجار، فواتير، أقساط). الباقي بيتحسب اختياري.</p>
     <div class="list">${catsOf('exp').map(c=>`
-      <label class="item" style="cursor:pointer"><em>${c.emoji}</em><span class="nm">${esc(c.name)}</span>
+      <label class="item" style="cursor:pointer"><em${tone(c)}>${c.emoji}</em><span class="nm">${esc(c.name)}</span>
         <input type="checkbox" data-fx="${c.id}" ${c.fixed?'checked':''}
-          style="width:20px;height:20px;accent-color:var(--gold)"></label>`).join('<div class="perf"></div>')}</div>
+          style="width:20px;height:20px;accent-color:var(--brand)"></label>`).join('<div class="perf"></div>')}</div>
     <div class="acts"><button class="go" id="fxOk">تم</button></div>`);
   $('#fxOk').onclick=async()=>{
     for(const el of document.querySelectorAll('[data-fx]')){
@@ -1596,7 +1626,7 @@ function walAcc(){
       <div class="sub">كاش <span class="num">${money0(cash)}</span> · بنك وكروت <span class="num">${money0(bank)}</span></div></div>
     <div class="list" style="margin-top:14px">${liveAccts().map(a=>{
       const b=balance(a.id);
-      return `<button class="item" data-acc="${a.id}"><em>${a.emoji}</em>
+      return `<button class="item" data-acc="${a.id}"><em${tone(a)}>${a.emoji}</em>
         <span class="nm">${esc(a.name)}<small>${a.type==='cash'?'كاش':'بنك / كارت'}</small></span>
         <span class="hint" style="color:${b>=0?'var(--chalk)':'var(--red)'};font-size:14px">${money0(b)}</span>
         <span class="chev">‹</span></button>`;}).join('<div class="perf"></div>')}</div>
@@ -1617,7 +1647,7 @@ function walDue(){
       <span style="color:var(--dim);font-size:12px">اللي منها في الشهر ده بيتخصم من «متاح النهاردة»</span></div>
     ${open.length?`<div class="list" style="margin-top:14px">${open.map(p=>{
       const late=p.date<today();
-      return `<button class="item" data-plan="${p.id}"><em>${catOf(p.cat).emoji}</em>
+      return `<button class="item" data-plan="${p.id}"><em${tone(catOf(p.cat))}>${catOf(p.cat).emoji}</em>
         <span class="nm">${esc(p.name)}<small>${dayLabel(p.date)}${late?' ⚠ فات موعده':''}</small></span>
         <span class="hint"${late?' style="color:var(--red)"':''}>${money0(p.amount)}</span>
         <span class="chev">‹</span></button>`;}).join('<div class="perf"></div>')}</div>`
@@ -1974,7 +2004,7 @@ function renderSet(){
   const cur=esc(S.settings.cur), b=S.settings.monthBudget||0;
   const bTxt = b===-1?'= الدخل المسجّل' : b>0? money0(b)+' '+cur : 'بدون';
   const catList=k=>catsOf(k).map(c=>`
-    <button class="item" data-ec="${c.id}"><em>${c.emoji}</em>
+    <button class="item" data-ec="${c.id}"><em${tone(c)}>${c.emoji}</em>
       <span class="nm">${esc(c.name)}${k==='exp'&&c.fixed?'<small>ملتزم</small>':''}</span>
       <span class="hint">${k==='exp'&&c.budget>0?money0(c.budget)+' '+cur:'—'}</span>
       <span class="chev">‹</span></button>`).join('<div class="perf"></div>');
@@ -2005,7 +2035,7 @@ function renderSet(){
         <span class="hint">${bTxt}</span><span class="chev">‹</span></button></div></div>
 
     ${PRO()?`<div class="sec"><h2>الحسابات</h2>
-      <div class="list">${liveAccts().map(a=>`<button class="item" data-sa="${a.id}"><em>${a.emoji}</em>
+      <div class="list">${liveAccts().map(a=>`<button class="item" data-sa="${a.id}"><em${tone(a)}>${a.emoji}</em>
         <span class="nm">${esc(a.name)}<small>${a.type==='cash'?'كاش':'بنك / كارت'}</small></span>
         <span class="hint">${money0(balance(a.id))}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>
       <button class="ghost" id="addAcc2">+ حساب جديد</button></div>`:''}
@@ -2020,7 +2050,7 @@ function renderSet(){
 
     <div class="sec"><h2>بنود ثابتة</h2>
       ${S.recur.length?`<div class="list">${S.recur.map(r=>{const c=catOf(r.cat);return `
-        <button class="item" data-er="${r.id}"><em>${c.emoji}</em>
+        <button class="item" data-er="${r.id}"><em${tone(c)}>${c.emoji}</em>
         <span class="nm">${esc(r.note||c.name)}<small>${r.kind==='inc'?'دخل':'مصروف'} · ${freqLabel(r)} · ${esc(acctOf(r.acct).name)}</small></span>
         <span class="hint"${r.kind==='inc'?' style="color:var(--mint)"':''}>${r.kind==='inc'?'+':''}${money0(r.amount)}</span>
         <span class="chev">‹</span></button>`;}).join('<div class="perf"></div>')}</div>`
