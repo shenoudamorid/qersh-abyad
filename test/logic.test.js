@@ -288,3 +288,37 @@ test('nightly stays', async t => {
     assert.notEqual(L.checkBackup({ ...base, stay: {} }), '');
   });
 });
+
+test('bookings: clashes, unit profit, WhatsApp, arrivals', async t => {
+  const a = { id: 'a', unit: 'الشقة', from: '2026-10-03', nights: 3, total: 4500, fee: 0, pays: [{ amount: 500 }] };
+  await t.test('overlap on the same unit only', () => {
+    const b = { id: 'b', unit: 'الشقة', from: '2026-10-05', nights: 2 };
+    const c = { id: 'c', unit: 'الشقة', from: '2026-10-06', nights: 2 };  // arrives on a's checkout day
+    const d = { id: 'd', unit: 'الشاليه', from: '2026-10-04', nights: 2 };
+    assert.deepEqual(L.stayClashes([a, b, c, d], b).map(x => x.id), ['a', 'c']);
+    assert.deepEqual(L.stayClashes([a, c, d], c), []);
+  });
+  await t.test('unit month: income less tagged expenses', () => {
+    const txs = [{ unit: 'الشقة', kind: 'exp', amount: 300, date: '2026-10-04' },
+      { unit: 'الشقة', kind: 'ref', amount: 50, date: '2026-10-05' },
+      { unit: 'الشاليه', kind: 'exp', amount: 999, date: '2026-10-04' },
+      { kind: 'exp', amount: 10, date: '2026-10-04' }];
+    assert.deepEqual(L.unitMonth([a], txs, 'الشقة', '2026-10'), { income: 4500, cost: 250, profit: 4250, nights: 3 });
+  });
+  await t.test('WhatsApp numbers', () => {
+    assert.equal(L.waNumber('01012345678'), '201012345678');
+    assert.equal(L.waNumber('٠١٠١٢٣٤٥٦٧٨'), '201012345678');
+    assert.equal(L.waNumber('+20 101 234 5678'), '201012345678');
+    assert.equal(L.waNumber('123'), '');
+  });
+  await t.test('arrivals with money still owed show as due', () => {
+    const due = L.dueItems({ stays: [a, { ...a, id: 'p', pays: [{ amount: 4500 }] }, { ...a, id: 'f', from: '2026-10-20' }] }, new Date(2026, 9, 1));
+    assert.deepEqual(due.map(x => [x.type, x.id, x.amount, x.late]), [['stay', 'a', 4000, false]]);
+  });
+  await t.test('notes worth learning', () => {
+    assert.equal(L.learnPhrase('كبدة'), 'كبدة');
+    assert.equal(L.learnPhrase('غسيل السجاد 300'), 'غسيل السجاد');
+    assert.equal(L.learnPhrase('كلام كتير جدا ملوش لازمة'), '');
+    assert.equal(L.learnPhrase('50'), '');
+  });
+});

@@ -141,10 +141,38 @@ function staySummary(stays,mk){
   return out;
 }
 
+/* other bookings of the same unit whose nights overlap `st`'s (checkout day is free for the next guest) */
+function stayClashes(stays,st){
+  const u=String(st.unit||'').trim(), a=st.from, b=stayOut(st);
+  return stays.filter(x=>x.id!==st.id && String(x.unit||'').trim()===u && x.from<b && stayOut(x)>a);
+}
+/* a unit's month: booking income (split by nights) less the expenses tagged with it */
+function unitMonth(stays,txs,unit,mk){
+  let income=0, nights=0;
+  for(const st of stays) if((st.unit||'')===unit){
+    const n=stayNightsIn(st,mk); if(!n) continue;
+    nights+=n; income+=stayNet(st)*n/Math.max(1,st.nights|0);
+  }
+  const mine=txs.filter(t=>t.unit===unit && t.date.slice(0,7)===mk);
+  const cost=mine.filter(t=>t.kind==='exp').reduce((s,t)=>s+t.amount,0)-mine.filter(t=>t.kind==='ref').reduce((s,t)=>s+t.amount,0);
+  return {income,cost,profit:income-cost,nights};
+}
+/* WhatsApp wants the number in international form: 010… → 2010… */
+function waNumber(x){
+  let d=normDigits(String(x||'')).replace(/\D/g,'');
+  if(d.startsWith('00')) d=d.slice(2);
+  if(d.startsWith('0')) d='20'+d.slice(1);
+  return d.length>=10?d:'';
+}
+
 /* ═══════ what's due ═══════ */
 /* open debts, upcoming expenses and unpaid rent that are late or due within `days` */
-function dueItems({debts=[],plans=[],rents=[]},now,days=7){
+function dueItems({debts=[],plans=[],rents=[],stays=[]},now,days=7){
   const t=iso(now), soon=iso(addDays(now,days)), out=[];
+  /* guests arriving within 3 days (or already in) who still owe part of the booking */
+  const near=iso(addDays(now,3));
+  for(const st of stays){ const left=stayLeft(st); if(left>0.005 && st.from<=near)
+    out.push({type:'stay',id:st.id,name:st.guest||st.unit||'',unit:st.unit||'',date:st.from,amount:left,late:st.from<t}); }
   for(const d of debts) if(!d.settledAt && d.due && d.due<=soon)
     out.push({type:'debt',id:d.id,name:d.person,dir:d.dir,date:d.due,amount:debtLeft(d),late:d.due<t});
   for(const p of plans) if(!p.done && p.date<=soon)
@@ -175,6 +203,12 @@ const tokOf=x=>String(x||'').split(/[\s,،.ـ_-]+/).filter(Boolean);
 function tokMatch(a,b){
   if(a.length<3||b.length<3) return a===b;
   return a===b || a.startsWith(b) || b.startsWith(a);
+}
+/* a note worth remembering as a category keyword: its first words, no numbers */
+function learnPhrase(note){
+  const w=tokOf(normDigits(String(note||'')).replace(/\d+(\.\d+)?/g,' ')).filter(x=>norm(x).length>=2);
+  if(!w.length || w.length>3) return '';
+  return w.join(' ').slice(0,30);
 }
 const REF_W=['مرتجع','رجعت','استرجاع','مردود'];
 const INC_W=['دخل','قبضت','استلمت','مرتب','عموله','عمولات','ايجار','ارباح','حصلت'];
@@ -762,10 +796,10 @@ function guessCat(text,cats){
 function checkBackup(d){
   if(!d||typeof d!=='object') return 'not an object';
   if(!Array.isArray(d.tx)||!Array.isArray(d.cats)) return 'missing tx or cats';
-  for(const k of ['acct','recur','debt','recon','plan','rent','stay'])
+  for(const k of ['acct','recur','debt','recon','plan','rent','stay','goal'])
     if(d[k]!=null && !Array.isArray(d[k])) return `${k} is not a list`;
   const ids=x=>x&&typeof x==='object'&&(typeof x.id==='string'||typeof x.id==='number');
-  for(const k of ['tx','cats','acct','recur','debt','recon','plan','rent','stay'])
+  for(const k of ['tx','cats','acct','recur','debt','recon','plan','rent','stay','goal'])
     if((d[k]||[]).some(x=>!ids(x))) return `${k} has a record without an id`;
   for(const st of (d.stay||[]))
     if(typeof st.from!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(st.from)||!(st.total>=0)) return 'stay with a bad date or amount';
@@ -780,5 +814,5 @@ function checkBackup(d){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayOut,stayNightsIn,staySummary,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
+  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayOut,stayNightsIn,staySummary,stayClashes,unitMonth,waNumber,dueItems,learnPhrase,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,CAT_WORDS,checkBackup};

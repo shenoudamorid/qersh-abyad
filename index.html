@@ -346,6 +346,16 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
 .acts .go{background:var(--brand);color:var(--onAcc);box-shadow:0 6px 18px color-mix(in srgb,var(--brand) 28%,transparent)}
 .acts .no{background:var(--ink3);color:var(--chalk)}
 .acts .del{background:color-mix(in srgb,var(--red) 16%,transparent);color:var(--red)}
+.calg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calg em{font-style:normal;font-size:11px;color:var(--dim);text-align:center;padding-bottom:2px}
+.calg button{aspect-ratio:1/1.05;border-radius:10px;background:var(--ink);display:flex;flex-direction:column;align-items:center;
+             justify-content:center;gap:3px;font-size:13px;font-variant-numeric:tabular-nums;color:var(--dim)}
+.calg button.bk{background:color-mix(in srgb,var(--brand) 14%,var(--ink2));color:var(--chalk);font-weight:600}
+.calg button.td{box-shadow:inset 0 0 0 1.5px var(--brand)}
+.calg .bars{display:flex;gap:2px;height:4px}
+.calg .bars b{width:12px;height:4px;border-radius:2px;display:block}
+.callg{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:12px;color:var(--dim)}
+.callg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline-end:5px;vertical-align:-1px}
 .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
 .mgrid button{padding:9px 2px;border-radius:10px;background:var(--ink);border:1px solid var(--ink3);
               font-size:11.5px;color:var(--dim);text-align:center}
@@ -365,6 +375,38 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
 #toast .undo{background:var(--ink);color:var(--chalk);padding:6px 12px;border-radius:999px;font-size:12px;
        font-weight:600;flex:none}
 
+#lock{position:fixed;inset:0;z-index:80;background:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:calc(var(--sat) + 20px) 24px calc(var(--sab) + 20px);gap:18px}
+#lock img{width:72px;height:72px;border-radius:18px;box-shadow:0 10px 30px color-mix(in srgb,var(--brand) 30%,transparent)}
+#lock h2{margin:0;font-size:18px}
+#lock .dots{display:flex;gap:14px;direction:ltr}
+#lock .dots i{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--dim)}
+#lock .dots i.on{background:var(--brand);border-color:var(--brand)}
+#lock .dots.bad{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+#lock .pad{display:grid;grid-template-columns:repeat(3,72px);gap:12px;direction:ltr}
+#lock .pad button{height:72px;border-radius:50%;background:var(--ink2);font-size:26px;font-weight:500;border:1px solid var(--line)}
+#lock .pad button:active{background:var(--ink3)}
+#lock .pad button.fn{background:transparent;border:0;font-size:20px;color:var(--dim)}
+#lock .bio{color:var(--brand);font-weight:600;font-size:14.5px;padding:8px 14px}
+#printArea{display:none}
+@media print{
+  html,body{height:auto;overflow:visible;background:#fff!important;color:#111!important}
+  body>*:not(#printArea){display:none!important}
+  #printArea{display:block;padding:0 4mm;font-size:11.5pt;color:#111}
+  #printArea h1{font-size:20pt;margin:0 0 2mm;color:#047857}
+  #printArea h2{font-size:13pt;margin:7mm 0 2mm;color:#047857;border-bottom:1.5px solid #10B981;padding-bottom:1mm}
+  #printArea .meta{color:#555;font-size:10pt;margin-bottom:4mm}
+  #printArea table{width:100%;border-collapse:collapse;margin:1mm 0;page-break-inside:auto}
+  #printArea tr{page-break-inside:avoid}
+  #printArea th,#printArea td{padding:1.6mm 2mm;border-bottom:.5px solid #ddd;text-align:start;font-size:10.5pt}
+  #printArea th{background:#ECFDF5;color:#065F46;font-weight:700}
+  #printArea td.n,#printArea th.n{text-align:end;font-variant-numeric:tabular-nums;direction:ltr;white-space:nowrap}
+  #printArea .kpis{display:flex;gap:4mm;margin:3mm 0}
+  #printArea .kpis div{flex:1;border:1px solid #D1FAE5;border-radius:3mm;padding:3mm;text-align:center}
+  #printArea .kpis b{display:block;font-size:15pt;margin-top:1mm;direction:ltr}
+  @page{margin:12mm}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-height:740px){
   .rail{padding-top:calc(var(--sat) + 9px);padding-bottom:8px}
@@ -439,7 +481,8 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
   </section>
 
   <section class="view" id="v-rep">
-    <div class="rail"><div><h1>التقارير</h1><div class="sub">الدخل والمصاريف بالشهر</div></div></div>
+    <div class="rail"><div><h1>التقارير</h1><div class="sub">الدخل والمصاريف بالشهر</div></div>
+      <button class="act" id="repPdf">📄 تقرير PDF</button></div>
     <div class="scroll" id="repBody"></div>
   </section>
 
@@ -473,6 +516,8 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
 <div id="toast"></div>
+<div id="lock" hidden></div>
+<div id="printArea"></div>
 <div id="memWarn" role="alert" hidden>التخزين مش شغال — أي حاجة هتسجلها هتضيع لما تقفل التطبيق. اقفله وافتحه تاني.</div>
 <script src="logic.js"></script>
 <script>
@@ -480,8 +525,8 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
-  const NAME='masareef', VER=4,
-        STORES=['tx','cats','recur','meta','debt','recon','acct','plan','rent','stay'];
+  const NAME='masareef', VER=5,
+        STORES=['tx','cats','recur','meta','debt','recon','acct','plan','rent','stay','goal'];
   let db=null, mem=null;
   function memInit(){ mem={}; STORES.forEach(s=>mem[s]=new Map()); }
   function open(){
@@ -539,9 +584,9 @@ const Store = (() => {
 
 /* ═══════ state ═══════ */
 const S = {
-  tx:[], cats:[], accts:[], recur:[], debts:[], recons:[], plans:[], rents:[], stays:[], stayMonth:null,
+  tx:[], cats:[], accts:[], recur:[], debts:[], recons:[], plans:[], rents:[], stays:[], goals:[], stayMonth:null,
   settings:{cur:'ج', monthBudget:0, currencies:[], lastBackup:0, mode:'simple', theme:'dark'},
-  draft:{kind:'exp',amt:'',cat:null,acct:null,toAcct:null,note:'',date:null,ccy:null},
+  draft:{kind:'exp',amt:'',cat:null,acct:null,toAcct:null,note:'',date:null,ccy:null,unit:''},
   lastCat:{exp:null,inc:null,ref:null},
   repMonth:null, filter:{cat:'',acct:'',kind:''}, search:'', walTab:'acc'
 };
@@ -631,12 +676,12 @@ function balance(id){
 }
 const netWorth=()=>liveAccts().reduce((s,a)=>s+balance(a.id),0);
 
-function toast(html,undo){
+function toast(html,undo,label='تراجع'){
   const t=$('#toast');
   t.innerHTML=`<span>${html}</span>`;
   if(undo){
     const b=document.createElement('button');
-    b.className='undo'; b.textContent='تراجع';
+    b.className='undo'; b.textContent=label;
     b.onclick=()=>{ t.classList.remove('on'); undo(); };
     t.appendChild(b);
   }
@@ -681,6 +726,7 @@ function applyMode(){
   await Store.open();
   const st=(await Store.all('meta')).find(m=>m.id==='settings');
   if(st) S.settings={...S.settings,...st.v};
+  if(S.settings.lock&&S.settings.lock.pin) showLock();
   if(!Array.isArray(S.settings.currencies)) S.settings.currencies=[];
   if(!['simple','pro'].includes(S.settings.mode)) S.settings.mode='simple';
   if(!['dark','light','auto'].includes(S.settings.theme)) S.settings.theme='dark';
@@ -693,6 +739,7 @@ function applyMode(){
   S.plans=await Store.all('plan');
   S.rents=await Store.all('rent');
   S.stays=await Store.all('stay');
+  S.goals=(await Store.all('goal')).sort((a,b)=>(a.at||0)-(b.at||0));
   for(const st of S.stays) if(!st.pays){
     st.pays=st.paidOn?[{id:uid(),amount:stayNet(st),date:st.paidOn,acct:st.acct,tx:st.tx}]:[];
     delete st.paidOn; delete st.tx; await Store.put('stay',st);
@@ -756,17 +803,106 @@ function applyMode(){
 
   if(!Store.persistent){ $('#memWarn').hidden=false; return; }
   persisted=await Store.persist();
-  const nag=backupNag(); if(nag) setTimeout(()=>toast(nag),1200);
+  const nag=backupNag(); if(nag) setTimeout(()=>{ if(!$('#lock')||$('#lock').hidden) toast(nag,exportJson,'خُد نسخة'); },1200);
 })();
+
+/* ═══════ app lock: a 4-digit passcode, optionally Face ID / fingerprint via WebAuthn.
+   It hides the app from someone holding the phone; the data itself isn't encrypted. ═══════ */
+const pinHash=async pin=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('masareef:'+pin)))]
+  .map(b=>b.toString(16).padStart(2,'0')).join('');
+const b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const bioOK=()=>!!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);
+async function bioCheck(){
+  try{
+    await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),timeout:60000,
+      allowCredentials:[{type:'public-key',id:unb64(S.settings.lock.bio)}],userVerification:'required'}});
+    return true;
+  }catch(e){ return false; }
+}
+async function bioCreate(){
+  try{
+    const c=await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),
+      rp:{name:'مصاريفي'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'masareef',displayName:'مصاريفي'},
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],timeout:60000,
+      authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required',residentKey:'discouraged'}}});
+    return c?b64(c.rawId):'';
+  }catch(e){ return ''; }
+}
+function showLock(){
+  const L=S.settings.lock; if(!L||!L.pin) return;
+  const el=$('#lock'); let typed='';
+  el.innerHTML=`<img src="icon-192.png" alt=""><h2>اكتب الرقم السري</h2><div class="dots" id="lkD">${'<i></i>'.repeat(4)}</div>
+    <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-lk="${n}">${n}</button>`).join('')}
+      <button class="fn" data-lk="bio">${L.bio?'🙂':''}</button><button data-lk="0">0</button><button class="fn" data-lk="del">⌫</button></div>
+    ${L.bio?'<button class="bio" id="lkBio">افتح بـ Face ID / البصمة</button>':''}`;
+  el.hidden=false; $('#toast').classList.remove('on');
+  const dots=()=>$('#lkD').querySelectorAll('i').forEach((d,i)=>d.classList.toggle('on',i<typed.length));
+  const open=()=>{ el.hidden=true; el.innerHTML=''; };
+  const bio=async()=>{ if(await bioCheck()) open(); };
+  el.onclick=async e=>{
+    const b=e.target.closest('[data-lk]'), k=b&&b.dataset.lk;
+    if(e.target.id==='lkBio'||k==='bio'){ if(L.bio) bio(); return; }
+    if(!k) return;
+    if(k==='del'){ typed=typed.slice(0,-1); return dots(); }
+    if(typed.length>=4) return;
+    typed+=k; dots();
+    if(typed.length===4){
+      if(await pinHash(typed)===L.pin) return open();
+      const d=$('#lkD'); d.classList.add('bad'); if(navigator.vibrate) try{navigator.vibrate(80)}catch(_){}
+      setTimeout(()=>{ d.classList.remove('bad'); typed=''; dots(); },380);
+    }
+  };
+}
+/* lock again after a minute in the background */
+let hiddenAt=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden) hiddenAt=Date.now();
+  else if(hiddenAt && Date.now()-hiddenAt>60000 && $('#lock').hidden) showLock();
+});
+function lockSheet(){
+  const L=S.settings.lock||{};
+  const pinRow=`<div class="f"><div class="row2">
+      <div><label>رقم سري جديد (٤ أرقام)</label><input id="lk1" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+      <div><label>اكتبه تاني</label><input id="lk2" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div></div></div>`;
+  sheet(`<h2>قفل التطبيق</h2>
+    <p class="lede">التطبيق هيطلب الرقم السري كل ما تفتحه، أو لو سبته أكتر من دقيقة. <b style="color:var(--red)">لو نسيت الرقم مفيش طريقة ترجّعه</b> — خليك واخد نسخة احتياطية.</p>
+    ${L.pin?`<div class="f"><label>الرقم السري الحالي</label><input id="lk0" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></div>`:''}
+    ${pinRow}
+    ${bioOK()?`<label class="chk"><input type="checkbox" id="lkB" ${L.bio?'checked':''}><span>افتح كمان بـ Face ID / البصمة</span></label>`:''}
+    <div class="acts">${L.pin?'<button class="del" id="lkOff">شيل القفل</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
+      <button class="go" id="lkOk">حفظ</button></div>`);
+  const cur=async()=>!L.pin || await pinHash($('#lk0').value)===L.pin;
+  $('#lkOk').onclick=async()=>{
+    if(!await cur()){ $('#lk0').focus(); return toast('الرقم السري الحالي غلط'); }
+    const a=$('#lk1').value, b=$('#lk2').value;
+    let pin=L.pin;
+    if(a||!L.pin){
+      if(!/^\d{4}$/.test(normDigits(a))){ $('#lk1').focus(); return toast('الرقم السري ٤ أرقام'); }
+      if(normDigits(a)!==normDigits(b)){ $('#lk2').focus(); return toast('الرقمين مش زي بعض'); }
+      pin=await pinHash(normDigits(a));
+    }
+    let bio=L.bio||'';
+    const want=$('#lkB')&&$('#lkB').checked;
+    if(want&&!bio){ bio=await bioCreate(); if(!bio) toast('Face ID مش متاح — هيفضل الرقم السري بس'); }
+    if(!want) bio='';
+    S.settings.lock={pin,bio}; await saveSettings();
+    closeSheet(); renderSet(); toast('التطبيق اتقفل 🔒');
+  };
+  if($('#lkOff')) $('#lkOff').onclick=async()=>{
+    if(!await cur()){ $('#lk0').focus(); return toast('اكتب الرقم السري الحالي الأول'); }
+    delete S.settings.lock; await saveSettings(); closeSheet(); renderSet(); toast('القفل اتشال');
+  };
+}
 
 /* null = browser can't tell us, true/false = whether our data is safe from eviction */
 let persisted=null;
 
-/* backup reminder: a month without one, or 100+ entries logged since the last */
+/* backup reminder: a week without one, or 100+ entries logged since the last */
 function backupNag(){
   if(S.tx.length<=15) return '';
   const last=S.settings.lastBackup||0;
-  if(Date.now()-last>30*864e5) return 'عدّى شهر من غير نسخة احتياطية';
+  if(Date.now()-last>7*864e5) return last?'عدّى أسبوع من غير نسخة احتياطية':'لسه ما خدتش نسخة احتياطية';
   const n=S.tx.filter(t=>(t.at||0)>last).length;
   return n>=100?`سجّلت ${n} حركة من آخر نسخة احتياطية`:'';
 }
@@ -831,6 +967,7 @@ function setKind(k){
   $('#kinds').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===k));
   moveInd();
   if(k!=='trf'){ S.draft.cat=S.lastCat[k]||catsOf(k)[0].id; S.draft.catPicked=false; }
+  if(k!=='trf') S.draft.fee=0;
   $('#save').textContent=KINDS[k].save;
   const trf=k==='trf';
   $('#toLbl').hidden=!trf; $('#toAccts').hidden=!trf;
@@ -912,7 +1049,9 @@ function renderReadout(){
   $('#tag').innerHTML=tag;
   const ok = Number(a)>0 && (k!=='trf' || (S.draft.toAcct && S.draft.toAcct!==S.draft.acct));
   $('#save').disabled=!ok;
-  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy);
+  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit);
+  if(S.draft.unit && k!=='trf' && k!=='inc') $('#tag').innerHTML+=` · 🏘 ${esc(S.draft.unit)}`;
+  if(S.draft.fee && k==='trf') $('#tag').innerHTML+=` · رسوم ${money(S.draft.fee)}`;
   $('#catLbl').hidden = S.draft.kind==='trf' || !PRO();
   $('#acctLbl').hidden = !PRO() && S.draft.kind!=='trf';
 }
@@ -1016,7 +1155,7 @@ function renderRail(){
 }
 
 /* ── what's due: late or within a week (debts, upcoming expenses, rent — all pro features) ── */
-const dueNow=()=>PRO()?dueItems({debts:S.debts,plans:S.plans,rents:S.rents},new Date()):[];
+const dueNow=()=>PRO()?dueItems({debts:S.debts,plans:S.plans,rents:S.rents,stays:S.stays},new Date()):[];
 function renderDue(){
   const items=dueNow(), b=$('#dueBtn');
   b.hidden=!items.length;
@@ -1029,17 +1168,19 @@ $('#dueBtn').addEventListener('click',()=>{
   const items=dueNow(), cur=esc(S.settings.cur);
   if(!items.length) return;
   const title=i=>i.type==='debt'?(i.dir==='out'?`${esc(i.name)} — ليك عنده`:`عليك لـ${esc(i.name)}`)
-    :i.type==='rent'?`إيجار ${esc(i.name)}${i.months>1?` — ${i.months} شهور`:''}`:esc(i.name);
-  const icon=i=>i.type==='debt'?(i.dir==='out'?'↗':'↘'):i.type==='rent'?'🏘':'📅';
+    :i.type==='rent'?`إيجار ${esc(i.name)}${i.months>1?` — ${i.months} شهور`:''}`
+    :i.type==='stay'?`${esc(i.name)}${i.unit&&i.unit!==i.name?' — '+esc(i.unit):''} · باقي الحجز`:esc(i.name);
+  const icon=i=>i.type==='debt'?(i.dir==='out'?'↗':'↘'):i.type==='rent'?'🏘':i.type==='stay'?'🛎':'📅';
   sheet(`<h2>مستحق</h2>
     <p class="lede">اللي فات موعده واللي جاي خلال أسبوع.</p>
     <div class="list">${items.map((i,n)=>`<button class="item" data-due="${n}"><em>${icon(i)}</em>
-      <span class="nm">${title(i)}<small>${dayLabel(i.date)}${i.late?' · <b style="color:var(--red)">فات موعده</b>':''}</small></span>
+      <span class="nm">${title(i)}<small>${i.type==='stay'?(i.late?'وصل ':'واصل ')+dayLabel(i.date):dayLabel(i.date)}${i.late?` · <b style="color:var(--red)">${i.type==='stay'?'لسه ما دفعش الباقي':'فات موعده'}</b>`:''}</small></span>
       <span class="hint"${i.late?' style="color:var(--red)"':''}>${money0(i.amount)} ${cur}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>
     <div class="acts"><button class="no" onclick="closeSheet()">تمام</button></div>`);
   $('#sheet').querySelectorAll('[data-due]').forEach(x=>x.onclick=()=>{
     const i=items[+x.dataset.due]; closeSheet();
     if(i.type==='rent'){ S.walTab='rent'; go('wal'); return; }
+    if(i.type==='stay'){ S.walTab='rent'; go('wal'); setTimeout(()=>staySheet(i.id),120); return; }
     setTimeout(()=>i.type==='debt'?debtSheet(i.id):planSheet(i.id),120);
   });
 });
@@ -1075,6 +1216,9 @@ $('#noteBtn').addEventListener('click',()=>{
     <div class="f"><label>ملاحظة</label>
       <input id="fNote" maxlength="80" placeholder="مثلاً: بنزين العربية" value="${esc(S.draft.note)}"></div>
     <div class="f"><label>التاريخ</label><input id="fDate" type="date" value="${S.draft.date}"></div>
+    ${unitField(S.draft.unit,S.draft.kind)}
+    ${S.draft.kind==='trf'?`<div class="f"><label>رسوم التحويل (إنستاباي / فودافون كاش / البنك)</label>
+      <input id="fFee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${S.draft.fee||''}"></div>`:''}
     ${ccOpts}
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="fOk">تم</button></div>`);
@@ -1085,17 +1229,21 @@ $('#noteBtn').addEventListener('click',()=>{
     if(g){ S.draft.cat=g.id; renderCats(); }
     S.draft.date=$('#fDate').value||today();
     S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null;
+    S.draft.unit=$('#fUnit')?$('#fUnit').value:'';
+    S.draft.fee=$('#fFee')?Math.max(0,Number($('#fFee').value)||0):0;
     closeSheet(); renderReadout();
   };
 });
 
 /* ── natural language entry (parser lives in logic.js) ── */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const parseEntry=raw=>parseSentence(raw,{accts:liveAccts(),expCats:catsOf('exp'),incCats:catsOf('inc'),
   pro:PRO(),lastCat:S.lastCat,acct:S.draft.acct});
 $('#nlBtn').addEventListener('click',()=>{
   sheet(`<h2>تسجيل بجملة</h2>
     <p class="lede">اكتب المبلغ والتصنيف والحساب في سطر واحد. مثال: <b>٥٠ أكل كاش</b> أو <b>20000 مرتب فيزا</b>.</p>
-    <div class="f"><input id="nlIn" placeholder="50 أكل كاش" autocomplete="off"></div>
+    <div class="f" style="display:flex;gap:8px"><input id="nlIn" placeholder="50 أكل كاش" autocomplete="off">
+      ${SR?'<button class="mini" id="nlMic" aria-label="اتكلم" style="height:auto;width:50px"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>':''}</div>
     <div id="nlOut" style="font-size:13px;color:var(--dim);min-height:22px"></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="nlOk">سجّل</button></div>`);
@@ -1106,6 +1254,14 @@ $('#nlBtn').addEventListener('click',()=>{
       : 'اكتب رقم على الأقل';
   };
   $('#nlIn').oninput=upd;
+  if($('#nlMic')) $('#nlMic').onclick=()=>{
+    const r=new SR(); r.lang='ar-EG'; r.interimResults=true;
+    const m=$('#nlMic'); m.classList.add('has');
+    r.onresult=e=>{ $('#nlIn').value=[...e.results].map(x=>x[0].transcript).join(' '); upd(); };
+    r.onend=()=>m.classList.remove('has');
+    r.onerror=()=>{ m.classList.remove('has'); toast('مقدرتش أسمع — جرّب مايك الكيبورد'); };
+    try{ r.start(); }catch(e){ m.classList.remove('has'); }
+  };
   $('#nlIn').onkeydown=e=>{ if(e.key==='Enter') $('#nlOk').click(); };
   upd();
   $('#nlOk').onclick=async()=>{
@@ -1123,8 +1279,16 @@ $('#save').addEventListener('click',async()=>{
   const t={kind:k,amount:cc?raw*cc.rate:raw,acct:S.draft.acct,note:S.draft.note,date:S.draft.date};
   if(k==='trf') t.toAcct=S.draft.toAcct; else t.cat=S.draft.cat;
   if(cc){ t.ccy=cc.code; t.raw=raw; t.rate=cc.rate; }
+  if(S.draft.unit && (k==='exp'||k==='ref')) t.unit=S.draft.unit;
+  if(k!=='trf' && S.draft.catPicked && S.draft.note) await learnFrom(S.draft.note,S.draft.cat);
   if(k!=='trf') S.lastCat[k]=S.draft.cat;
-  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false;
+  /* a transfer's fee is a real expense from the sending account */
+  if(k==='trf' && S.draft.fee>0){
+    const fc=guessCat('رسوم تحويل',catsOf('exp'))||catsOf('exp').slice(-1)[0];
+    const f={id:uid(),at:Date.now()-1,kind:'exp',amount:S.draft.fee,cat:fc.id,acct:t.acct,note:'رسوم تحويل',date:t.date};
+    await Store.put('tx',f); S.tx.push(f);
+  }
+  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0;
   await commit(t);
 });
 
@@ -1201,7 +1365,7 @@ function renderLog(){
       const isTrf=t.kind==='trf';
       const icon=isTrf?'⇄':catOf(t.cat).emoji;
       const name=isTrf?`${acctOf(t.acct).name} ← ${acctOf(t.toAcct).name}`:catOf(t.cat).name;
-      const bits=[t.note, t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
+      const bits=[t.note, t.unit?'🏘 '+t.unit:'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
       return `<button class="row${t._new?' print':''}" data-tx="${t.id}">
@@ -1257,6 +1421,7 @@ function editTx(id){
     <div class="f"><label>${isTrf?'من حساب':'الحساب'}</label><select id="eAcct">${acctOpts(t.acct)}</select></div>
     <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">${acctOpts(t.toAcct)}</select></div>
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
+    <div id="eUnitW">${unitField(t.unit||'',t.kind,'eUnit')}</div>
     <div class="acts"><button class="del" id="eDel">حذف</button>
       <button class="go" id="eOk">حفظ التعديل</button></div>`);
   $('#eKind').onchange=e=>{
@@ -1264,6 +1429,7 @@ function editTx(id){
     $('#eCatWrap').hidden=trf; $('#eToWrap').hidden=!trf;
     if(!trf) $('#eCat').innerHTML=catsOf(k==='ref'?'exp':k)
       .map(c=>`<option value="${c.id}">${c.emoji} ${esc(c.name)}</option>`).join('');
+    $('#eUnitW').innerHTML=unitField($('#eUnit')?$('#eUnit').value:(t.unit||''),k,'eUnit');
   };
   $('#eOk').onclick=async()=>{
     const a=Number($('#eAmt').value); if(!(a>0)){ $('#eAmt').focus(); return; }
@@ -1274,8 +1440,12 @@ function editTx(id){
     if(t.ccy && a!==t.amount){ delete t.ccy; delete t.raw; delete t.rate; }
     Object.assign(t,{amount:a,date:$('#eDate').value||t.date,kind:k,acct:$('#eAcct').value,
       note:$('#eNote').value.trim()});
+    const catBefore=t.cat;
     if(k==='trf'){ t.toAcct=$('#eTo').value; delete t.cat; }
     else { t.cat=$('#eCat').value; delete t.toAcct; }
+    const u=$('#eUnit')?$('#eUnit').value:'';
+    if(u && (k==='exp'||k==='ref')) t.unit=u; else delete t.unit;
+    if(k!=='trf' && t.cat!==catBefore && t.note) await learnFrom(t.note,t.cat);
     await Store.put('tx',t); sortTx();
     closeSheet(); renderLog(); renderRail(); renderAccts(); toast('اتعدل');
   };
@@ -1338,7 +1508,7 @@ function renderRep(){
     <button id="rPrev" aria-label="قبله">›</button></div>`;
 
   if(!all.length){
-    $('#repBody').innerHTML=nav+`<div class="empty"><div class="h">مفيش حركات في ${monthLabel(mk)}</div>
+    $('#repBody').innerHTML=nav+goalsCard()+`<div class="empty"><div class="h">مفيش حركات في ${monthLabel(mk)}</div>
       <div class="p">سجّل مصروف أو دخل وهيبان هنا فوراً.</div></div>`+(PRO()?yearCard():'');
     return bindRepNav();
   }
@@ -1439,7 +1609,7 @@ function renderRep(){
   const maxD=Math.max(...daily,1), logged=daily.filter(v=>v>0).length;
   const top5=[...exp].sort((a,b)=>b.amount-a.amount).slice(0,5);
 
-  $('#repBody').innerHTML = nav + hero + anom + budCard + ie + fv + (PRO()?acc+reconCard(mk):'') + `
+  $('#repBody').innerHTML = nav + hero + goalsCard() + anom + budCard + ie + fv + (PRO()?acc+reconCard(mk):'') + `
     <div class="stats">
       <div class="stat"><div class="v">${money0(E/dPast)}</div><div class="l">متوسط مصروف يومي</div></div>
       <div class="stat"><div class="v">${logged}<span style="font-size:13px;color:var(--dim)"> / ${D}</span></div><div class="l">أيام فيها مصاريف</div></div>
@@ -1462,7 +1632,94 @@ function renderRep(){
   const fe=$('#fvEdit'); if(fe) fe.onclick=fixedSheet;
   const rb=$('#reconBtn'); if(rb) rb.onclick=()=>reconSheet(null);
 }
+/* ═══════ savings goals ═══════ */
+const goalSaved=g=>(g.adds||[]).reduce((s,a)=>s+a.amount,0);
+function goalsCard(){
+  const cur=esc(S.settings.cur);
+  return `<div class="card"><h3>أهداف الادخار <button id="addGoal">+ هدف</button></h3>
+    ${S.goals.length?S.goals.map((g,i)=>{
+      const v=goalSaved(g), pct=Math.min(100,v/g.target*100), done=v>=g.target;
+      let hint='';
+      if(!done && g.by){ const [y,m]=g.by.split('-').map(Number), now=new Date();
+        const months=Math.max(1,(y-now.getFullYear())*12+(m-1-now.getMonth())+1);
+        hint=` · محتاج <span class="num">${money0((g.target-v)/months)}</span> في الشهر`; }
+      return `${i?'<div style="height:12px"></div>':''}<button class="brow" data-goal="${g.id}" style="display:block;width:100%;text-align:start;--t:${done?'var(--mint)':'var(--brand)'}">
+        <div class="top"><span class="l"><em style="font-style:normal">${esc(g.emoji||'🎯')}</em><span class="t">${esc(g.name)}</span>
+          <span class="pct">${pct.toFixed(0)}%</span></span><span class="r">${money0(v)} / ${money0(g.target)}</span></div>
+        <div class="bar tall"><i style="width:${pct}%;background:var(--t)"></i></div>
+        <div class="bud">${done?'🎉 وصلت للهدف':`فاضل <span class="num">${money0(g.target-v)}</span> ${cur}${hint}`}</div></button>`;
+    }).join(''):`<div style="font-size:13px;color:var(--dim);line-height:1.7">حدد هدف — «تجديد الشقة» أو «عربية» — وكل ما تحوّش سجّل المبلغ وشوف وصلت لفين.</div>`}</div>`;
+}
+function goalSheet(id){
+  const g=id?S.goals.find(x=>x.id===id):{name:'',emoji:'🎯',target:'',by:'',adds:[]};
+  const cur=esc(S.settings.cur);
+  sheet(`<h2>${id?esc(g.name):'هدف ادخار جديد'}</h2>
+    <div class="f"><div class="row2">
+      <div><label>الهدف</label><input id="gN" maxlength="30" placeholder="تجديد الشقة" value="${esc(g.name)}"></div>
+      <div><label>رمز</label><input id="gE" maxlength="3" style="text-align:center;font-size:20px" value="${esc(g.emoji||'🎯')}"></div></div></div>
+    <div class="f"><div class="row2">
+      <div><label>المبلغ المطلوب</label><input id="gT" type="number" inputmode="decimal" min="0" step="1" value="${g.target}"></div>
+      <div><label>عايزه قبل شهر (اختياري)</label><input id="gB" type="month" value="${g.by||''}"></div></div></div>
+    ${id?`<div class="card" style="margin:0 0 13px;box-shadow:none"><h3>اللي حوّشته <span style="font-size:12.5px;font-weight:500;color:var(--dim)">${money0(goalSaved(g))} ${cur}</span></h3>
+      ${(g.adds||[]).slice().reverse().map(a=>`<div class="kv" style="padding:5px 0"><span>${dayLabel(a.date)}</span>
+        <span style="display:flex;gap:10px;align-items:center"><b>${money(a.amount)}</b><button type="button" data-rmadd="${a.id}" style="color:var(--red);font-size:17px">×</button></span></div>`).join('')||'<div style="font-size:13px;color:var(--dim)">لسه.</div>'}</div>`:''}
+    <div class="f"><label>${id?'حوّشت النهاردة':'حوّشت لحد دلوقتي (اختياري)'}</label><input id="gA" type="number" inputmode="decimal" min="0" step="1" placeholder="0"></div>
+    <div class="acts">${id?'<button class="del" id="gDel">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
+      <button class="go" id="gOk">حفظ</button></div>`);
+  $('#sheet').querySelectorAll('[data-rmadd]').forEach(x=>x.onclick=async()=>{
+    g.adds=g.adds.filter(a=>a.id!==x.dataset.rmadd); await Store.put('goal',g); goalSheet(id); renderRep(); });
+  $('#gOk').onclick=async()=>{
+    const n=$('#gN').value.trim(), T=Number($('#gT').value), A=Number($('#gA').value)||0;
+    if(!n){ $('#gN').focus(); return; }
+    if(!(T>0)){ $('#gT').focus(); return; }
+    Object.assign(g,{name:n,emoji:$('#gE').value.trim()||'🎯',target:T,by:$('#gB').value||''});
+    if(A>0) g.adds=[...(g.adds||[]),{id:uid(),amount:A,date:today()}];
+    if(!id){ g.id=uid(); g.at=Date.now(); S.goals.push(g); }
+    await Store.put('goal',g); closeSheet(); renderRep();
+    toast(goalSaved(g)>=g.target?'🎉 وصلت للهدف!':A>0?`حوّشت ${money0(A)} — فاضل ${money0(g.target-goalSaved(g))}`:'تم');
+  };
+  if($('#gDel')) $('#gDel').onclick=async()=>{ if(!confirm('حذف الهدف ده؟')) return;
+    await Store.del('goal',g.id); S.goals=S.goals.filter(x=>x.id!==g.id); closeSheet(); renderRep(); toast('اتحذف'); };
+}
+/* the month as a printable page — on the phone «Print» → «Save to Files» gives a PDF */
+function printReport(mk){
+  const cur=esc(S.settings.cur), E=expNet(mk), I=incNet(mk), txs=inMonth(mk).slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const n=x=>`<td class="n">${money(x)}</td>`;
+  const byCat=(rowsP,rowsN)=>{ const m={}; rowsP.forEach(t=>m[t.cat]=(m[t.cat]||0)+t.amount); (rowsN||[]).forEach(t=>m[t.cat]=(m[t.cat]||0)-t.amount);
+    return Object.entries(m).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]); };
+  const ec=byCat(inMonth(mk,'exp'),inMonth(mk,'ref')), ic=byCat(inMonth(mk,'inc'));
+  const catTable=(rows,tot,bud)=>`<table><tr><th>التصنيف</th><th class="n">المبلغ</th><th class="n">%</th>${bud?'<th class="n">الميزانية</th>':''}</tr>
+    ${rows.map(([id,v])=>{const c=catOf(id);return `<tr><td>${c.emoji} ${esc(c.name)}</td>${n(v)}<td class="n">${tot?(v/tot*100).toFixed(0):0}%</td>${bud?`<td class="n">${c.budget?money0(c.budget):'—'}</td>`:''}</tr>`;}).join('')}</table>`;
+  const sm=staySummary(S.stays,mk), us=stayUnits();
+  const stays=S.stays.filter(st=>stayNightsIn(st,mk)).sort((a,b)=>a.from.localeCompare(b.from));
+  $('#printArea').innerHTML=`<h1>تقرير ${monthLabel(mk)}</h1>
+    <div class="meta">مصاريفي · اتعمل ${dayLabel(today())} · المبالغ بالـ ${cur}</div>
+    <div class="kpis"><div>الدخل<b>${money(I)}</b></div><div>المصاريف<b>${money(E)}</b></div><div>الصافي<b>${I-E>=0?'+':''}${money(I-E)}</b></div></div>
+    ${ec.length?`<h2>المصاريف بالتصنيف</h2>${catTable(ec,E,true)}`:''}
+    ${ic.length?`<h2>الدخل بالتصنيف</h2>${catTable(ic,I,false)}`:''}
+    ${PRO()?`<h2>الحسابات (الرصيد دلوقتي)</h2><table><tr><th>الحساب</th><th class="n">الرصيد</th></tr>
+      ${liveAccts().map(a=>`<tr><td>${a.emoji} ${esc(a.name)}</td>${n(balance(a.id))}</tr>`).join('')}
+      <tr><th>الإجمالي</th><th class="n">${money(netWorth())}</th></tr></table>`:''}
+    ${stays.length?`<h2>الحجوزات</h2>
+      <div class="kpis"><div>صافي الحجوزات<b>${money0(sm.net)}</b></div><div>ليالي<b>${sm.nights}</b></div><div>عمولات<b>${money0(sm.fees)}</b></div></div>
+      <table><tr><th>الضيف</th><th>الوحدة</th><th>التاريخ</th><th>المصدر</th><th class="n">الصافي</th><th class="n">الباقي</th></tr>
+      ${stays.map(st=>`<tr><td>${esc(st.guest||'')}</td><td>${esc(st.unit||'')}</td><td>${stayDates(st)} (${nightsLbl(st.nights)})</td><td>${CH[st.channel].name}</td>${n(stayNet(st))}${n(stayLeft(st))}</tr>`).join('')}</table>
+      ${us.length?`<table><tr><th>الوحدة</th><th class="n">الدخل</th><th class="n">المصاريف</th><th class="n">المكسب</th></tr>
+        ${us.map(u=>{const r=unitMonth(S.stays,S.tx,u,mk);return `<tr><td>${esc(u)}</td>${n(r.income)}${n(r.cost)}${n(r.profit)}</tr>`;}).join('')}</table>`:''}`:''}
+    ${S.goals.length?`<h2>أهداف الادخار</h2><table><tr><th>الهدف</th><th class="n">حوّشت</th><th class="n">المطلوب</th><th class="n">%</th></tr>
+      ${S.goals.map(g=>`<tr><td>${esc(g.emoji||'')} ${esc(g.name)}</td>${n(goalSaved(g))}${n(g.target)}<td class="n">${Math.min(100,goalSaved(g)/g.target*100).toFixed(0)}%</td></tr>`).join('')}</table>`:''}
+    <h2>كل الحركات (${txs.length})</h2>
+    <table><tr><th>اليوم</th><th>النوع</th><th>التصنيف</th><th>الحساب</th><th>ملاحظة</th><th class="n">المبلغ</th></tr>
+      ${txs.map(t=>`<tr><td>${+t.date.slice(8)} ${AR_M3[+t.date.slice(5,7)-1]}</td><td>${KINDS[t.kind].label}</td>
+        <td>${t.kind==='trf'?'→ '+esc(acctOf(t.toAcct).name):esc(catOf(t.cat).name)}</td><td>${esc(acctOf(t.acct).name)}</td>
+        <td>${esc(t.note||'')}</td><td class="n">${t.kind==='inc'||t.kind==='ref'?'+':''}${money(t.amount)}</td></tr>`).join('')}</table>`;
+  const prev=document.title; document.title=`مصاريفي — ${monthLabel(mk)}`;
+  setTimeout(()=>{ window.print(); document.title=prev; },60);
+}
+$('#repPdf').addEventListener('click',()=>printReport(S.repMonth||today().slice(0,7)));
 function bindRepNav(){
+  if($('#addGoal')) $('#addGoal').onclick=()=>goalSheet(null);
+  $('#repBody').querySelectorAll('[data-goal]').forEach(x=>x.onclick=()=>goalSheet(x.dataset.goal));
   const p=$('#rPrev'),n=$('#rNext');
   if(p) p.onclick=()=>{S.repMonth=prevMonth(S.repMonth);renderRep();$('#v-rep').scrollTop=0;};
   if(n) n.onclick=()=>{S.repMonth=nextMonth(S.repMonth);renderRep();$('#v-rep').scrollTop=0;};
@@ -1701,6 +1958,25 @@ const stayDates=st=>{const a=parseISO(st.from),b=addDays(parseISO(stayOut(st)),-
   return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${AR_MONTHS[a.getMonth()]}`
     :`${a.getDate()} ${AR_M3[a.getMonth()]} – ${b.getDate()} ${AR_M3[b.getMonth()]}`;};
 const stayUnits=()=>[...new Set(S.stays.map(x=>x.unit).filter(Boolean))];
+/* «تابع لوحدة» on expenses, only once there are rental units */
+function unitField(val,kind,id='fUnit'){
+  const us=stayUnits(); if(val&&!us.includes(val)) us.push(val);
+  if(!us.length || !PRO() || (kind!=='exp'&&kind!=='ref')) return '';
+  return `<div class="f"><label>تابع لوحدة؟ (يتخصم من مكسبها)</label><select id="${id}">
+    <option value="">لا — مصروف شخصي</option>${us.map(u=>`<option value="${esc(u)}" ${u===val?'selected':''}>🏘 ${esc(u)}</option>`).join('')}</select></div>`;
+}
+/* the user put a note under a category the keywords didn't point to — remember it there */
+async function learnFrom(note,catId){
+  const c=S.cats.find(x=>x.id===catId), ph=learnPhrase(note);
+  if(!c||!ph) return;
+  const g=guessCat(ph,catsOf(c.kind));
+  if(g&&g.id===c.id) return;
+  const key=norm(ph);
+  for(const o of S.cats) if(o!==c && (o.words||[]).some(w=>norm(w)===key)){
+    o.words=o.words.filter(w=>norm(w)!==key); await Store.put('cats',o);
+  }
+  c.words=[...(c.words||[]),ph]; await Store.put('cats',c);
+}
 const stayStatus=st=>{
   const paid=stayPaid(st), left=stayLeft(st);
   if(left<=0.005) return '';
@@ -1708,6 +1984,37 @@ const stayStatus=st=>{
 };
 /* the day the app started being used — money that arrived before it is already in the opening balances */
 const appStart=()=>S.tx.filter(t=>!t.stay).reduce((m,t)=>t.date<m?t.date:m,today());
+const UNIT_T=['#10B981','#3B82F6','#F59E0B','#EC4899','#8B5CF6','#06B6D4'];
+const unitTone=u=>UNIT_T[Math.max(0,stayUnits().indexOf(u))%UNIT_T.length];
+/* month grid (week starts Saturday); each booked night gets a bar in its unit's colour */
+function stayCalendar(mk){
+  const [Y,M]=mk.split('-').map(Number), D=dim(Y,M), off=(new Date(Y,M-1,1).getDay()+1)%7, us=stayUnits(), t=today();
+  const cells=[];
+  for(let i=0;i<off;i++) cells.push('<i></i>');
+  for(let d=1;d<=D;d++){
+    const ds=`${mk}-${String(d).padStart(2,'0')}`;
+    const on=S.stays.filter(st=>st.from<=ds && stayOut(st)>ds);
+    const bars=us.filter(u=>on.some(st=>(st.unit||'')===u)).map(u=>`<b style="background:${unitTone(u)}"></b>`).join('')
+      +(on.some(st=>!st.unit)?`<b style="background:var(--dim)"></b>`:'');
+    cells.push(`<button data-day="${ds}" class="${on.length?'bk':''}${ds===t?' td':''}"><span>${d}</span><span class="bars">${bars}</span></button>`);
+  }
+  return `<div class="card cal"><h3>التقويم <span style="font-size:12px;font-weight:500;color:var(--dim)">دوس على يوم فاضي تحجزه</span></h3>
+    <div class="calg">${['س','ح','ن','ث','ر','خ','ج'].map(x=>`<em>${x}</em>`).join('')}${cells.join('')}</div>
+    ${us.length>1?`<div class="callg">${us.map(u=>`<span><i style="background:${unitTone(u)}"></i>${esc(u)}</span>`).join('')}</div>`:''}</div>`;
+}
+/* what each unit really made this month: bookings less the expenses tagged with it */
+function unitCards(mk){
+  const us=stayUnits(); if(!us.length) return '';
+  const cur=esc(S.settings.cur);
+  const rows=us.map(u=>({u,...unitMonth(S.stays,S.tx,u,mk)})).filter(r=>r.income||r.cost);
+  if(!rows.length) return '';
+  return `<div class="card"><h3>مكسب كل وحدة</h3>${rows.map((r,i)=>`${i?'<div class="perf" style="margin:8px 0"></div>':''}
+    <div class="kv" style="padding:4px 0"><span style="display:flex;align-items:center;gap:7px"><i class="sw" style="background:${unitTone(r.u)}"></i><b style="font-family:inherit">${esc(r.u)}</b></span>
+      <b style="color:${r.profit>=0?'var(--mint)':'var(--red)'}">${r.profit>=0?'+':''}${money0(r.profit)} ${cur}</b></div>
+    <div class="kv" style="padding:2px 0;font-size:12.5px;color:var(--dim)"><span>دخل ${nightsLbl(r.nights)}</span><span class="num">${money0(r.income)}</span></div>
+    <div class="kv" style="padding:2px 0;font-size:12.5px;color:var(--dim)"><span>مصاريف الوحدة</span><span class="num">${r.cost?"−"+money0(r.cost):"0"}</span></div>`).join('')}
+    <div class="foot">علشان مصروف يتخصم من وحدة: في تفاصيل المصروف (✎) اختار «تابع لوحدة».</div></div>`;
+}
 function walRent(){
   const cur=esc(S.settings.cur), mk=S.stayMonth||(S.stayMonth=today().slice(0,7)), thisM=today().slice(0,7);
   const sm=staySummary(S.stays,mk);
@@ -1726,6 +2033,8 @@ function walRent(){
       <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>إشغال <b>${occ}%</b></span><span>حجوزات <b>${sm.count}</b></span></div>
       ${sm.fees>0?`<div class="cmp">عمولات المنصات <span class="num">${money0(sm.fees)}</span> ${cur}</div>`:''}</div>
     ${sm.pending>0?`<div class="banner" style="margin-top:12px">فاضلك تحصّل <b class="num">${money0(sm.pending)} ${cur}</b> من ${sm.pendingN===1?'حجز':sm.pendingN+' حجوزات'} — دوس على الحجز وسجّل الدفعة لما توصل.</div>`:''}
+    ${stayCalendar(mk)}
+    ${unitCards(mk)}
     ${chRows?`<div class="card"><h3>حسب المصدر</h3>${chRows}</div>`:''}
     <div class="list" style="margin-top:12px">${list.length?list.map(st=>`<button class="item" data-stay="${st.id}">${chIcon(st.channel)}
         <span class="nm">${esc(st.guest||CH[st.channel].name)}${st.unit?' — '+esc(st.unit):''}
@@ -1781,6 +2090,10 @@ function bindWal(){
   if(g('addRent')) g('addRent').onclick=()=>rentSheet(null);
   if(g('addStay')) g('addStay').onclick=()=>staySheet(null);
   b.querySelectorAll('[data-stay]').forEach(x=>x.onclick=()=>staySheet(x.dataset.stay));
+  b.querySelectorAll('[data-day]').forEach(x=>x.onclick=()=>{
+    const ds=x.dataset.day, on=S.stays.filter(st=>st.from<=ds && stayOut(st)>ds);
+    if(on.length) staySheet(on[0].id); else staySheet(null,{from:ds});
+  });
   if(g('sPrev')) g('sPrev').onclick=()=>{S.stayMonth=prevMonth(S.stayMonth);renderWal();};
   if(g('sNext')) g('sNext').onclick=()=>{S.stayMonth=nextMonth(S.stayMonth);renderWal();};
 }
@@ -1788,8 +2101,12 @@ function bindWal(){
 function acctSheet(id){
   const a=id?S.accts.find(x=>x.id===id):{emoji:'💵',name:'',type:'cash',opening:0,archived:false};
   const bal=id?balance(id):0;
+  const PRESETS=[['🏦','إنستاباي','bank'],['📱','فودافون كاش','bank'],['📱','اتصالات كاش','bank'],['📱','أورنج كاش','bank'],
+    ['🏦','البنك الأهلي','bank'],['🏦','بنك مصر','bank'],['🏦','CIB','bank'],['💳','كارت ميزة','bank'],['💵','كاش البيت','cash']];
   sheet(`<h2>${id?'تعديل الحساب':'حساب جديد'}</h2>
-    ${id?`<p class="lede">الرصيد الحالي: <b class="num">${money(bal)} ${esc(S.settings.cur)}</b></p>`:''}
+    ${id?`<p class="lede">الرصيد الحالي: <b class="num">${money(bal)} ${esc(S.settings.cur)}</b></p>`
+      :`<div class="f"><label>اختيار سريع</label><div class="strip noscroll" style="padding:0;flex-wrap:wrap">${PRESETS.map(([e,n,t])=>
+        `<button type="button" class="c" data-pre="${e}|${n}|${t}"><em>${e}</em>${n}</button>`).join('')}</div></div>`}
     <div class="f"><div class="row2">
       <div><label>رمز</label><input id="aE" maxlength="3" style="text-align:center;font-size:22px" value="${esc(a.emoji)}"></div>
       <div><label>الرصيد الافتتاحي</label><input id="aO" type="number" inputmode="decimal" step="0.01" value="${a.opening||0}"></div>
@@ -1803,6 +2120,8 @@ function acctSheet(id){
     <div class="acts">
       ${id&&liveAccts().length>1?'<button class="del" id="aD">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="aOk">حفظ</button></div>`);
+  $('#sheet').querySelectorAll('[data-pre]').forEach(x=>x.onclick=()=>{
+    const [e,n,t]=x.dataset.pre.split('|'); $('#aE').value=e; $('#aN').value=n; $('#aT').value=t; });
   $('#aOk').onclick=async()=>{
     const n=$('#aN').value.trim(); if(!n){ $('#aN').focus(); return; }
     const arch=$('#aA')?$('#aA').checked:false;
@@ -1976,13 +2295,13 @@ async function syncStayTx(st,before){
   }
   sortTx();
 }
-function staySheet(id){
+function staySheet(id,preset){
   const rentCat=(catsOf('inc').find(c=>c.name.includes('إيجار'))||catsOf('inc')[0]).id;
   const bankAcct=()=>(liveAccts().find(a=>a.type==='bank')||liveAccts()[0]).id;
   const cashAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]).id;
   const last=S.stays.slice().sort((a,b)=>(b.at||0)-(a.at||0))[0];
-  const st=id?S.stays.find(x=>x.id===id):{unit:last?last.unit:'',guest:'',from:today(),nights:1,total:'',fee:0,
-    channel:'booking',pays:[],cat:last?last.cat:rentCat,note:''};
+  const st=id?S.stays.find(x=>x.id===id):{unit:last?last.unit:'',guest:'',phone:'',from:today(),nights:1,total:'',fee:0,
+    channel:'booking',pays:[],cat:last?last.cat:rentCat,note:'',...(preset||{})};
   const cur=esc(S.settings.cur);
   let ch=st.channel, acctTouched=false, pays=(st.pays||[]).map(p=>({...p}));
   sheet(`<h2>${id?'تعديل الحجز':'حجز جديد'}</h2>
@@ -1993,6 +2312,7 @@ function staySheet(id){
         <datalist id="sUL">${stayUnits().map(u=>`<option value="${esc(u)}">`).join('')}</datalist></div>
       <div><label>اسم الضيف</label><input id="sG" maxlength="40" value="${esc(st.guest||'')}"></div>
     </div></div>
+    <div class="f"><label>موبايل الضيف (للواتساب)</label><input id="sPh" type="tel" inputmode="tel" maxlength="20" placeholder="010…" value="${esc(st.phone||'')}"></div>
     <div class="f"><div class="row2">
       <div><label>يوم الوصول</label><input id="sF" type="date" value="${st.from}"></div>
       <div><label>عدد الليالي</label><input id="sN" type="number" inputmode="numeric" min="1" step="1" value="${st.nights}"></div>
@@ -2016,9 +2336,22 @@ function staySheet(id){
     <div class="f"><label>تصنيف الدخل</label><select id="sC">
       ${catsOf('inc').map(c=>`<option value="${c.id}" ${c.id===st.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
     <div class="f"><label>ملاحظة</label><input id="sNt" maxlength="60" value="${esc(st.note||'')}"></div>
+    ${id?`<button type="button" class="ghost" id="sWa" style="margin-top:0;color:#16A34A;border-color:color-mix(in srgb,#16A34A 50%,transparent)">💬 ابعت تأكيد الحجز للضيف على واتساب</button>`:''}
     <div class="acts">
       ${id?'<button class="del" id="sDel">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="sOk">حفظ</button></div>`);
+  if($('#sWa')) $('#sWa').onclick=()=>{
+    const out=parseISO(stayOut(st)), a=parseISO(st.from), c=S.settings.cur;
+    const day=d=>`${AR_DAYS[d.getDay()]} ${d.getDate()} ${AR_MONTHS[d.getMonth()]}`;
+    const paid=stayPaid(st), left=stayLeft(st);
+    const msg=[`أهلاً ${st.guest||''} 👋`,`تأكيد حجزك${st.unit?' في '+st.unit:''}:`,
+      `الوصول: ${day(a)}`,`المغادرة: ${day(out)}`,`المدة: ${nightsLbl(st.nights)}`,
+      `الإجمالي: ${money0(st.total)} ${c}`,
+      ...(st.channel==='direct'?[paid?`المدفوع: ${money0(paid)} ${c}`:'',left?`الباقي: ${money0(left)} ${c} — يُدفع عند الوصول`:'تم الدفع بالكامل ✅']:[]),
+      'في انتظارك 🌿'].filter(Boolean).join('\n');
+    const n=waNumber($('#sPh').value||st.phone);
+    window.open(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`,'_blank');
+  };
   const netNow=()=>Math.max(0,(Number($('#sT').value)||0)-(ch==='direct'?0:Number($('#sFee').value)||0));
   const upd=()=>{
     $('#sFeeW').style.visibility=ch==='direct'?'hidden':'visible';
@@ -2066,8 +2399,11 @@ function staySheet(id){
     const paid=pays.reduce((s,p)=>s+p.amount,0);
     if(paid>T-F+0.005){ if(added) pays.pop(); $('#pA').focus(); return toast(`المدفوع (${money0(paid)}) أكتر من صافي الحجز (${money0(T-F)})`); }
     const before=(st.pays||[]).map(p=>({...p}));
-    const v={unit:$('#sU').value.trim(),guest:$('#sG').value.trim(),from:$('#sF').value||today(),nights:n,total:T,fee:F,
+    const v={unit:$('#sU').value.trim(),guest:$('#sG').value.trim(),phone:$('#sPh').value.trim(),from:$('#sF').value||today(),nights:n,total:T,fee:F,
       channel:ch,pays,cat:$('#sC').value,note:$('#sNt').value.trim()};
+    /* the same unit already booked on any of these nights? */
+    const clash=stayClashes(S.stays,{id:id||'',unit:v.unit,from:v.from,nights:n});
+    if(clash.length && !confirm(`${v.unit||'الوحدة'} محجوزة في نفس الليالي:\n${clash.map(x=>`• ${x.guest||CH[x.channel].name} — ${stayDates(x)}`).join('\n')}\n\nتحفظ الحجز برضه؟`)){ if(added) pays.pop(); return; }
     let rec=st;
     if(id) Object.assign(st,v);
     else{ rec={id:uid(),at:Date.now(),...v}; S.stays.push(rec); }
@@ -2193,7 +2529,8 @@ function renderSet(){
       <span class="chev">‹</span></button>`).join('<div class="perf"></div>');
 
   $('#setBody').innerHTML=`
-    ${backupNag()?`<div class="banner">${backupNag()}. البيانات على الموبايل ده بس — <b>خُد نسخة دلوقتي</b>.</div>`:''}
+    ${backupNag()?`<div class="banner">${backupNag()}. البيانات على الموبايل ده بس — لو ضاع أو اتمسح بتضيع معاه.
+      <button class="ghost" id="nagBk" style="margin-top:10px;border-style:solid;color:var(--brand);border-color:var(--brand)">خُد نسخة دلوقتي واحفظها في Files / iCloud</button></div>`:''}
 
     <div class="sec"><h2>وضع التطبيق</h2>
       <div class="seg" id="modeSeg">
@@ -2252,6 +2589,11 @@ function renderSet(){
     :`<div class="sec"><h2>العملة</h2><div class="list"><div class="item"><span class="nm">رمز العملة</span>
         <input id="setCur" value="${cur}" maxlength="4" style="width:70px;text-align:center;padding:8px;border-radius:9px;background:var(--ink);border:1.5px solid var(--ink3)"></div></div></div>`}
 
+    <div class="sec"><h2>الأمان</h2>
+      <div class="list"><button class="item" id="lockBtn"><em style="--t:var(--brand)">🔒</em>
+        <span class="nm">قفل التطبيق<small>${S.settings.lock?.pin?(S.settings.lock.bio?'رقم سري + Face ID':'برقم سري'):'مش مقفول — أي حد يمسك الموبايل يشوف حساباتك'}</small></span>
+        <span class="chev">‹</span></button></div></div>
+
     <div class="sec"><h2>البيانات</h2>
       <div class="list">
         <button class="item" id="expCsv"><em>⤓</em><span class="nm">تصدير Excel (CSV)</span><span class="chev">‹</span></button>
@@ -2297,6 +2639,8 @@ function renderSet(){
   $('#expJson').onclick=exportJson;
   $('#impJson').onclick=importJson;
   $('#wipe').onclick=wipe;
+  if($('#nagBk')) $('#nagBk').onclick=exportJson;
+  $('#lockBtn').onclick=lockSheet;
 }
 
 function ccySheet(i){
@@ -2451,7 +2795,7 @@ function exportCsv(){
   toast('اتصدر ملف CSV');
 }
 const backupJson=()=>JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
-  tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents,stay:S.stays});
+  tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents,stay:S.stays,goal:S.goals});
 async function exportJson(){
   const name=`masareef-backup-${today()}.json`, text=backupJson();
   /* on phones the share sheet saves straight to Files / Drive / WhatsApp */
@@ -2486,7 +2830,7 @@ function importJson(){
     if(!Array.isArray(settings.currencies)) settings.currencies=[];
 
     /* one transaction: either the whole backup lands or the current data stays untouched */
-    const lists={tx:d.tx,cats:d.cats,recur:d.recur||[],debt:d.debt||[],recon:d.recon||[],acct:accts,plan:d.plan||[],rent:d.rent||[],stay:d.stay||[]};
+    const lists={tx:d.tx,cats:d.cats,recur:d.recur||[],debt:d.debt||[],recon:d.recon||[],acct:accts,plan:d.plan||[],rent:d.rent||[],stay:d.stay||[],goal:d.goal||[]};
     const ops=Object.keys(lists).map(k=>['clear',k]);
     for(const k in lists) for(const x of lists[k]) ops.push(['put',k,x]);
     ops.push(['put','meta',{id:'settings',v:settings}]);
@@ -2496,7 +2840,7 @@ function importJson(){
     S.accts=accts.slice().sort((a,b)=>a.order-b.order);
     S.cats=d.cats.slice().sort((a,b)=>a.order-b.order);
     S.tx=d.tx.slice(); sortTx();
-    S.recur=lists.recur; S.debts=lists.debt; S.plans=lists.plan; S.rents=lists.rent; S.stays=lists.stay;
+    S.recur=lists.recur; S.debts=lists.debt; S.plans=lists.plan; S.rents=lists.rent; S.stays=lists.stay; S.goals=lists.goal;
     for(const st of S.stays) if(!st.pays){
       st.pays=st.paidOn?[{id:uid(),amount:stayNet(st),date:st.paidOn,acct:st.acct,tx:st.tx}]:[];
       delete st.paidOn; delete st.tx; await Store.put('stay',st);
