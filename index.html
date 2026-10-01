@@ -395,24 +395,19 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
 #lock .pad button:active{background:var(--ink3)}
 #lock .pad button.fn{background:transparent;border:0;font-size:20px;color:var(--dim)}
 #lock .bio{color:var(--brand);font-weight:600;font-size:14.5px;padding:8px 14px}
-#printArea{display:none}
-@media print{
-  html,body{height:auto;overflow:visible;background:#fff!important;color:#111!important}
-  body>*:not(#printArea){display:none!important}
-  #printArea{display:block;padding:0 4mm;font-size:11.5pt;color:#111}
-  #printArea h1{font-size:20pt;margin:0 0 2mm;color:#047857}
-  #printArea h2{font-size:13pt;margin:7mm 0 2mm;color:#047857;border-bottom:1.5px solid #10B981;padding-bottom:1mm}
-  #printArea .meta{color:#555;font-size:10pt;margin-bottom:4mm}
-  #printArea table{width:100%;border-collapse:collapse;margin:1mm 0;page-break-inside:auto}
-  #printArea tr{page-break-inside:avoid}
-  #printArea th,#printArea td{padding:1.6mm 2mm;border-bottom:.5px solid #ddd;text-align:start;font-size:10.5pt}
-  #printArea th{background:#ECFDF5;color:#065F46;font-weight:700}
-  #printArea td.n,#printArea th.n{text-align:end;font-variant-numeric:tabular-nums;direction:ltr;white-space:nowrap}
-  #printArea .kpis{display:flex;gap:4mm;margin:3mm 0}
-  #printArea .kpis div{flex:1;border:1px solid #D1FAE5;border-radius:3mm;padding:3mm;text-align:center}
-  #printArea .kpis b{display:block;font-size:15pt;margin-top:1mm;direction:ltr}
-  @page{margin:12mm}
-}
+/* the PDF report is laid out off-screen on an A4-wide white page, then photographed into a PDF */
+#printArea{position:fixed;left:-10000px;top:0;width:794px;background:#fff;color:#111;padding:44px 40px;
+  font-family:var(--ar);font-size:14px;line-height:1.5;direction:rtl}
+#printArea h1{font-size:27px;margin:0 0 4px;color:#047857}
+#printArea h2{font-size:17px;margin:26px 0 8px;color:#047857;border-bottom:2px solid #10B981;padding-bottom:4px}
+#printArea .meta{color:#555;font-size:12.5px;margin-bottom:14px}
+#printArea table{width:100%;border-collapse:collapse;margin:4px 0}
+#printArea th,#printArea td{padding:6px 8px;border-bottom:1px solid #E5E7EB;text-align:start;font-size:13px;color:#111}
+#printArea th{background:#ECFDF5;color:#065F46;font-weight:700}
+#printArea td.n,#printArea th.n{text-align:end;font-variant-numeric:tabular-nums;direction:ltr;white-space:nowrap}
+#printArea .kpis{display:flex;gap:12px;margin:10px 0}
+#printArea .kpis div{flex:1;border:1px solid #D1FAE5;border-radius:10px;padding:10px;text-align:center;color:#374151;font-size:13px}
+#printArea .kpis b{display:block;font-size:20px;margin-top:3px;direction:ltr;color:#111}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (max-height:740px){
   .rail{padding-top:calc(var(--sat) + 9px);padding-bottom:8px}
@@ -1765,8 +1760,48 @@ function printReport(mk){
       ${txs.map(t=>`<tr><td>${+t.date.slice(8)} ${AR_M3[+t.date.slice(5,7)-1]}</td><td>${KINDS[t.kind].label}</td>
         <td>${t.kind==='trf'?'→ '+esc(acctOf(t.toAcct).name):esc(catOf(t.cat).name)}</td><td>${esc(acctOf(t.acct).name)}</td>
         <td>${esc(t.note||'')}</td><td class="n">${t.kind==='inc'||t.kind==='ref'?'+':''}${money(t.amount)}</td></tr>`).join('')}</table>`;
-  const prev=document.title; document.title=`قرش أبيض — ${monthLabel(mk)}`;
-  setTimeout(()=>{ window.print(); document.title=prev; },60);
+  makePdf(`qersh-abyad-report-${mk}.pdf`);
+}
+/* iPhone home-screen apps can't print, so the report becomes a real PDF file:
+   the page is photographed (html2canvas), cut into A4 pages at row boundaries (jsPDF),
+   and handed to the share sheet — Save to Files, WhatsApp, Mail… */
+let pdfLibs=null;
+const loadScript=src=>new Promise((ok,bad)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=bad; document.head.appendChild(s); });
+async function makePdf(name){
+  const btn=$('#repPdf'); btn.disabled=true; const label=btn.textContent; btn.textContent='⏳ بيتجهز…';
+  try{
+    pdfLibs=pdfLibs||Promise.all([loadScript('vendor/html2canvas.min.js'),loadScript('vendor/jspdf.umd.min.js')]);
+    await pdfLibs; await document.fonts.ready;
+    const stage=$('#printArea'), W=794, PH=Math.round(W*297/210), S2=2;
+    const canvas=await html2canvas(stage,{scale:S2,backgroundColor:'#ffffff',windowWidth:W,logging:false});
+    /* page breaks fall between rows / headings, never through a line of text */
+    /* a heading or a table's header row never ends a page: cut before the heading, or after the first data row */
+    const top=stage.getBoundingClientRect().top;
+    const cuts=[...stage.querySelectorAll('h2,tr')]
+      .filter(e=>e.tagName!=='TR' || (e.previousElementSibling && !e.previousElementSibling.querySelector('th')))
+      .map(e=>Math.round(e.getBoundingClientRect().top-top)).filter(y=>y>0).sort((a,b)=>a-b);
+    const pages=[]; let y=0; const H=stage.scrollHeight;
+    while(y<H-2){ let end=y+PH; if(end<H){ const c=cuts.filter(v=>v>y+PH*0.5&&v<=end).pop(); if(c) end=c; } else end=H; pages.push([y,end]); y=end; }
+    const { jsPDF }=window.jspdf, pdf=new jsPDF({unit:'pt',format:'a4'}), pw=pdf.internal.pageSize.getWidth();
+    pages.forEach(([a,b],i)=>{
+      const c=document.createElement('canvas'); c.width=W*S2; c.height=(b-a)*S2;
+      const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height);
+      g.drawImage(canvas,0,a*S2,W*S2,(b-a)*S2,0,0,W*S2,(b-a)*S2);
+      if(i) pdf.addPage();
+      pdf.addImage(c.toDataURL('image/jpeg',0.9),'JPEG',0,0,pw,pw*(b-a)/W);
+    });
+    const blob=pdf.output('blob');
+    let file=null; try{ file=new File([blob],name,{type:'application/pdf'}); }catch(e){}
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file],title:name}); }catch(e){ if(e.name!=='AbortError') throw e; }
+    }else{
+      const u=URL.createObjectURL(blob), a=document.createElement('a'); a.href=u; a.download=name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),4000);
+    }
+    window.__pdf={pages:pages.length,bytes:blob.size};
+  }catch(e){
+    console.error(e); alert('مقدرتش أعمل ملف الـPDF — اتأكد إن النت شغال أول مرة، وجرّب تاني.');
+  }finally{ btn.disabled=false; btn.textContent=label; }
 }
 $('#repPdf').addEventListener('click',()=>printReport(S.repMonth||today().slice(0,7)));
 function bindRepNav(){
