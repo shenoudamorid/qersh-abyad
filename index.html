@@ -1260,14 +1260,17 @@ $('#noteBtn').addEventListener('click',()=>{
 });
 
 /* ── natural language entry (parser lives in logic.js) ── */
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+/* iPhone's in-browser speech recognition asks for the mic on every launch of a home-screen app
+   and often stops returning text after the first use — its keyboard dictation has neither problem */
+const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const SR=IOS?null:(window.SpeechRecognition||window.webkitSpeechRecognition);
 const parseEntry=raw=>parseSentence(raw,{accts:liveAccts(),expCats:catsOf('exp'),incCats:catsOf('inc'),
   pro:PRO(),lastCat:S.lastCat,acct:S.draft.acct});
 $('#nlBtn').addEventListener('click',()=>{
   sheet(`<h2>تسجيل بجملة</h2>
     <p class="lede">اكتب أو قول المبلغ والتصنيف والحساب في سطر واحد. مثال: <b>٥٠ أكل كاش</b> أو <b>خمسين شاورما فيزا</b>.</p>
     <div class="f" style="display:flex;gap:8px"><input id="nlIn" placeholder="50 أكل كاش" autocomplete="off">
-      ${SR?'<button class="mini" id="nlMic" aria-label="اتكلم" style="height:auto;width:50px"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>':''}</div>
+      ${SR||IOS?'<button class="mini" id="nlMic" aria-label="اتكلم" style="height:auto;width:50px"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>':''}</div>
     <div id="nlHint" class="banner" style="margin:0 0 12px" hidden></div>
     <div id="nlOut" style="font-size:13px;color:var(--dim);min-height:22px"></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
@@ -1289,6 +1292,10 @@ $('#nlBtn').addEventListener('click',()=>{
   let rec=null;
   if($('#nlMic')) $('#nlMic').onclick=()=>{
     const m=$('#nlMic');
+    if(!SR){
+      $('#nlHint').innerHTML='الكيبورد اتفتح — دوس على <b>🎤</b> اللي تحت جنب المسافة واتكلم.<br>مثلاً: «خمسين شاورما كاش». ولما تخلص دوس «سجّل».';
+      $('#nlHint').hidden=false; $('#nlIn').focus(); return;
+    }
     if(rec){ try{ rec.stop(); }catch(_){} return; }          // second tap = stop listening
     $('#nlHint').hidden=true;
     const langs=['ar-EG','ar-SA','ar'];
