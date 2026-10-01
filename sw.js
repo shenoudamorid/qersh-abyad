@@ -1,4 +1,4 @@
-const CACHE = 'masareef-v23';
+const CACHE = 'masareef-v24';
 const SHELL = ['./', './index.html', './logic.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
