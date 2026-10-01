@@ -1,7 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#065F46"/><stop offset="1" stop-color="#10B981"/></linearGradient></defs>
-  <rect width="512" height="512" rx="112" fill="url(#g)"/><g transform="translate(256 256) scale(1) translate(-256 -256)"><g transform="translate(22 -14)">
-  <g fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="300" cy="262" r="56"/>
-    <path d="M356 262 V318 C356 400 290 432 226 432 C160 432 118 398 112 344"/></g>
-  <circle cx="262" cy="128" r="33" fill="#fff"/><circle cx="342" cy="128" r="33" fill="#fff"/>
-</g></g></svg>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/><g transform="translate(256 256) scale(1) translate(-256 -256)"><g fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="256" cy="256" r="160"/>
+  <path d="M178 300 L236 242 L272 278 L338 212"/>
+  <path d="M296 204 H346 V254"/></g></g></svg>
