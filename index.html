@@ -62,7 +62,7 @@ input,select,textarea{font-family:inherit;font-size:16px;color:var(--chalk)}
 
 /* pinned to the screen's edges rather than «100% tall»: after the keyboard closes, iPhone home-screen
    apps can be left with a shorter 100%, which cut the save button off under the tab bar */
-#app{display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;right:0;max-width:520px;margin:0 auto}
+#app{display:flex;flex-direction:column;position:fixed;top:0;left:0;right:0;height:var(--appH,100%);max-width:520px;margin:0 auto}
 .view{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;flex-direction:column;min-height:0}
 .view.on{display:flex}
 .scroll{padding:0 var(--pad) 26px}
@@ -859,10 +859,29 @@ function showLock(){
     }
   };
 }
+/* The app's height. Installed on an iPhone home screen, iOS can hand the page a viewport that
+   stops short of the bottom of the screen (an empty strip under the tab bar, the save button cut off).
+   A home-screen app always fills the whole screen, so there the real screen height is used. */
+const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const STANDALONE=navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+function fitScreen(){
+  let h=window.innerHeight;
+  const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');
+  if(IOS && STANDALONE && !typing && innerHeight>innerWidth){
+    const full=Math.max(screen.height,screen.width);
+    if(full>h && full-h<140) h=full;
+  }
+  document.documentElement.style.setProperty('--appH',h+'px');
+}
+fitScreen();
+['resize','orientationchange','pageshow'].forEach(e=>window.addEventListener(e,()=>setTimeout(fitScreen,60)));
+if(window.visualViewport) visualViewport.addEventListener('resize',()=>setTimeout(fitScreen,60));
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) setTimeout(fitScreen,60); });
+
 /* iPhone can leave the page scrolled after the keyboard closes — put it back */
 document.addEventListener('focusout',()=>setTimeout(()=>{
   const a=document.activeElement;
-  if(!a||!/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){ window.scrollTo(0,0); document.body.scrollTop=0; }
+  if(!a||!/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){ window.scrollTo(0,0); document.body.scrollTop=0; fitScreen(); }
 },150));
 
 /* lock again after a minute in the background */
@@ -1270,7 +1289,6 @@ $('#noteBtn').addEventListener('click',()=>{
 /* ── natural language entry (parser lives in logic.js) ── */
 /* iPhone's in-browser speech recognition asks for the mic on every launch of a home-screen app
    and often stops returning text after the first use — its keyboard dictation has neither problem */
-const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const SR=IOS?null:(window.SpeechRecognition||window.webkitSpeechRecognition);
 const parseEntry=raw=>parseSentence(raw,{accts:liveAccts(),expCats:catsOf('exp'),incCats:catsOf('inc'),
   pro:PRO(),lastCat:S.lastCat,acct:S.draft.acct});
