@@ -693,6 +693,10 @@ function applyMode(){
   S.plans=await Store.all('plan');
   S.rents=await Store.all('rent');
   S.stays=await Store.all('stay');
+  for(const st of S.stays) if(!st.pays){
+    st.pays=st.paidOn?[{id:uid(),amount:stayNet(st),date:st.paidOn,acct:st.acct,tx:st.tx}]:[];
+    delete st.paidOn; delete st.tx; await Store.put('stay',st);
+  }
   S.recons=(await Store.all('recon')).sort((a,b)=>a.date.localeCompare(b.date));
   S.tx=await Store.all('tx');
 
@@ -1697,12 +1701,19 @@ const stayDates=st=>{const a=parseISO(st.from),b=addDays(parseISO(stayOut(st)),-
   return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${AR_MONTHS[a.getMonth()]}`
     :`${a.getDate()} ${AR_M3[a.getMonth()]} – ${b.getDate()} ${AR_M3[b.getMonth()]}`;};
 const stayUnits=()=>[...new Set(S.stays.map(x=>x.unit).filter(Boolean))];
+const stayStatus=st=>{
+  const paid=stayPaid(st), left=stayLeft(st);
+  if(left<=0.005) return '';
+  return ` · <b style="color:var(--brand)">${paid>0?`اتدفع ${money0(paid)} · فاضل ${money0(left)}`:st.channel==='direct'?'مستني الدفع':'مستني التحويل'}</b>`;
+};
+/* the day the app started being used — money that arrived before it is already in the opening balances */
+const appStart=()=>S.tx.filter(t=>!t.stay).reduce((m,t)=>t.date<m?t.date:m,today());
 function walRent(){
   const cur=esc(S.settings.cur), mk=S.stayMonth||(S.stayMonth=today().slice(0,7)), thisM=today().slice(0,7);
   const sm=staySummary(S.stays,mk);
   const [Y,M]=mk.split('-').map(Number), units=Math.max(1,stayUnits().length);
   const occ=Math.min(100,Math.round(sm.nights/(dim(Y,M)*units)*100));
-  const list=S.stays.filter(st=>stayNightsIn(st,mk)||(!st.paidOn&&mk===thisM)).sort((a,b)=>b.from.localeCompare(a.from));
+  const list=S.stays.filter(st=>stayNightsIn(st,mk)||(stayLeft(st)>0&&mk===thisM)).sort((a,b)=>b.from.localeCompare(a.from));
   const chRows=Object.keys(CH).filter(c=>sm.by[c]).map(c=>`<div class="brow" style="--t:${CH[c].t}">
       <div class="top"><span class="l"><span class="t">${CH[c].name}</span><span class="pct">${nightsLbl(sm.by[c].nights)}</span></span>
         <span class="r">${money0(sm.by[c].net)}</span></div>
@@ -1714,15 +1725,15 @@ function walRent(){
       <div class="big">${money(sm.net)}<span class="cur">${cur}</span></div>
       <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>إشغال <b>${occ}%</b></span><span>حجوزات <b>${sm.count}</b></span></div>
       ${sm.fees>0?`<div class="cmp">عمولات المنصات <span class="num">${money0(sm.fees)}</span> ${cur}</div>`:''}</div>
-    ${sm.pending>0?`<div class="banner" style="margin-top:12px">مستني يوصلك <b class="num">${money0(sm.pending)} ${cur}</b> من ${sm.pendingN===1?'حجز':sm.pendingN+' حجوزات'} — دوس على الحجز لما الفلوس تنزل.</div>`:''}
+    ${sm.pending>0?`<div class="banner" style="margin-top:12px">فاضلك تحصّل <b class="num">${money0(sm.pending)} ${cur}</b> من ${sm.pendingN===1?'حجز':sm.pendingN+' حجوزات'} — دوس على الحجز وسجّل الدفعة لما توصل.</div>`:''}
     ${chRows?`<div class="card"><h3>حسب المصدر</h3>${chRows}</div>`:''}
     <div class="list" style="margin-top:12px">${list.length?list.map(st=>`<button class="item" data-stay="${st.id}">${chIcon(st.channel)}
         <span class="nm">${esc(st.guest||CH[st.channel].name)}${st.unit?' — '+esc(st.unit):''}
-          <small>${stayDates(st)} · ${nightsLbl(st.nights)} · ${CH[st.channel].name}${st.paidOn?'':' · <b style="color:var(--brand)">مستني التحويل</b>'}</small></span>
+          <small>${stayDates(st)} · ${nightsLbl(st.nights)} · ${CH[st.channel].name}${stayStatus(st)}</small></span>
         <span class="hint">${money0(stayNet(st))}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')
       :`<div class="item" style="color:var(--dim);font-size:13px">مفيش حجوزات في ${monthLabel(mk)}.</div>`}</div>`
     :`<div class="empty" style="padding:30px 20px 10px"><div class="h">مفيش حجوزات لسه</div>
-      <div class="p">سجّل كل حجز: الضيف وعدد الليالي والمبلغ، ومنين (بوكينج، Airbnb، أو مباشر)، والفلوس نزلت في أنهي حساب — وهيتسجل دخل لوحده.</div></div>`;
+      <div class="p">سجّل كل حجز: الضيف وعدد الليالي والمبلغ، ومنين (بوكينج، Airbnb، أو مباشر). وكل دفعة توصلك — عربون أو الباقي — سجّلها في الحساب اللي نزلت فيه وهتتسجل دخل لوحدها.</div></div>`;
   return `<div class="sec" style="margin-top:14px"><h2>حجوزات بالليلة <button id="addStay">+ حجز جديد</button></h2></div>
     ${stays}
     <div class="sec"><h2>عقود شهرية</h2></div>${walContracts()}<div style="height:14px"></div>`;
@@ -1946,17 +1957,23 @@ function debtPaySheet(id,full){
   };
 }
 
-/* a booking's income: one tx in the log while the money has arrived, none while it's pending */
-async function syncStayTx(st){
-  const t=st.tx&&S.tx.find(x=>x.id===st.tx);
-  if(!st.paidOn){
-    if(t){ await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id); }
-    delete st.tx; return;
+/* a booking's income: one tx per payment that arrived while the app was in use;
+   payments marked `pre` were already inside the opening balance and log nothing */
+async function syncStayTx(st,before){
+  const keep=new Set((st.pays||[]).map(p=>p.id));
+  for(const p of (before||[])) if(!keep.has(p.id) && p.tx){
+    await Store.del('tx',p.tx); S.tx=S.tx.filter(x=>x.id!==p.tx);
   }
-  const v={kind:'inc',amount:stayNet(st),cat:st.cat,acct:st.acct,date:st.paidOn,stay:st.id,
-    note:`${CH[st.channel].name} · ${st.guest?st.guest+' · ':''}${nightsLbl(st.nights)}${st.unit?' · '+st.unit:''}`};
-  if(t){ Object.assign(t,v); await Store.put('tx',t); }
-  else{ const n={id:uid(),at:Date.now(),...v}; S.tx.push(n); await Store.put('tx',n); st.tx=n.id; }
+  const net=stayNet(st);
+  for(const [i,p] of (st.pays||[]).entries()){
+    const t=p.tx&&S.tx.find(x=>x.id===p.tx);
+    if(p.pre){ if(t){ await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id); } delete p.tx; continue; }
+    const tag=p.amount>=net-0.005?'':i===0?'عربون · ':'دفعة · ';
+    const v={kind:'inc',amount:p.amount,cat:st.cat,acct:p.acct,date:p.date,stay:st.id,
+      note:`${tag}${CH[st.channel].name} · ${st.guest?st.guest+' · ':''}${nightsLbl(st.nights)}${st.unit?' · '+st.unit:''}`};
+    if(t){ Object.assign(t,v); await Store.put('tx',t); }
+    else{ const n={id:uid(),at:Date.now(),...v}; S.tx.push(n); await Store.put('tx',n); p.tx=n.id; }
+  }
   sortTx();
 }
 function staySheet(id){
@@ -1965,8 +1982,9 @@ function staySheet(id){
   const cashAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]).id;
   const last=S.stays.slice().sort((a,b)=>(b.at||0)-(a.at||0))[0];
   const st=id?S.stays.find(x=>x.id===id):{unit:last?last.unit:'',guest:'',from:today(),nights:1,total:'',fee:0,
-    channel:'booking',paidOn:'',acct:bankAcct(),cat:last?last.cat:rentCat,note:''};
-  let ch=st.channel, acctTouched=!!id;
+    channel:'booking',pays:[],cat:last?last.cat:rentCat,note:''};
+  const cur=esc(S.settings.cur);
+  let ch=st.channel, acctTouched=false, pays=(st.pays||[]).map(p=>({...p}));
   sheet(`<h2>${id?'تعديل الحجز':'حجز جديد'}</h2>
     <div class="f"><label>المصدر</label><div class="seg" id="sCh">${Object.keys(CH).map(c=>
       `<button data-ch="${c}" aria-pressed="${c===ch}">${CH[c].name}</button>`).join('')}</div></div>
@@ -1983,57 +2001,89 @@ function staySheet(id){
       <div><label>إجمالي الحجز</label><input id="sT" type="number" inputmode="decimal" min="0" step="0.01" value="${st.total}"></div>
       <div id="sFeeW"><label>عمولة المنصة</label><input id="sFee" type="number" inputmode="decimal" min="0" step="0.01" value="${st.fee||0}"></div>
     </div><div id="sCalc" style="font-size:12.5px;color:var(--dim);margin-top:7px;min-height:18px"></div></div>
-    <label class="chk" style="margin-bottom:13px"><input type="checkbox" id="sP" ${st.paidOn?'checked':''}><span>الفلوس وصلت — سجّلها دخل</span></label>
-    <div class="f" id="sPW"><div class="row2">
-      <div><label>وصلت في حساب</label><select id="sA">${acctOpts(st.acct)}</select></div>
-      <div><label>يوم ما وصلت</label><input id="sD" type="date" value="${st.paidOn||today()}"></div>
-    </div></div>
+
+    <div class="card" style="margin:4px 0 13px;padding:14px;box-shadow:none">
+      <h3 style="margin-bottom:10px">الدفع <span id="pSum" style="font-size:12.5px;font-weight:500;color:var(--dim)"></span></h3>
+      <div id="pList"></div>
+      <div class="f" style="margin-bottom:10px"><div class="row2">
+        <div><label id="pAL">عربون أو دفعة وصلتك</label><input id="pA" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></div>
+        <div><label>يوم ما وصلت</label><input id="pD" type="date" value="${today()}"></div>
+      </div><button type="button" id="pAll" style="font-size:12.5px;color:var(--brand);font-weight:600;margin-top:7px"></button></div>
+      <div class="f" style="margin-bottom:10px"><label>وصلت في حساب</label><select id="pAc">${acctOpts(ch==='direct'?cashAcct():bankAcct())}</select></div>
+      <label class="chk" id="pPreW"><input type="checkbox" id="pPre" checked><span>الدفعة دي وصلت قبل ما أبدأ أسجّل في التطبيق — موجودة في الرصيد الافتتاحي، فمتتزودش عليه تاني</span></label>
+    </div>
+
     <div class="f"><label>تصنيف الدخل</label><select id="sC">
       ${catsOf('inc').map(c=>`<option value="${c.id}" ${c.id===st.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
     <div class="f"><label>ملاحظة</label><input id="sNt" maxlength="60" value="${esc(st.note||'')}"></div>
     <div class="acts">
       ${id?'<button class="del" id="sDel">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="sOk">حفظ</button></div>`);
+  const netNow=()=>Math.max(0,(Number($('#sT').value)||0)-(ch==='direct'?0:Number($('#sFee').value)||0));
   const upd=()=>{
     $('#sFeeW').style.visibility=ch==='direct'?'hidden':'visible';
-    $('#sPW').hidden=!$('#sP').checked;
-    const n=Math.max(1,Number($('#sN').value)|0), T=Number($('#sT').value)||0, F=ch==='direct'?0:Number($('#sFee').value)||0;
-    const c=esc(S.settings.cur);
-    $('#sCalc').innerHTML=T>0?`الليلة <span class="num">${money(T/n)}</span> ${c}${F>0?` · الصافي <b class="num" style="color:var(--chalk)">${money(T-F)}</b> ${c}`:''}`:'';
+    const n=Math.max(1,Number($('#sN').value)|0), T=Number($('#sT').value)||0, net=netNow();
+    $('#sCalc').innerHTML=T>0?`الليلة <span class="num">${money(T/n)}</span> ${cur}${net<T?` · الصافي <b class="num" style="color:var(--chalk)">${money(net)}</b> ${cur}`:''}`:'';
+    const paid=pays.reduce((s,p)=>s+p.amount,0), left=Math.max(0,net-paid);
+    $('#pSum').innerHTML=net>0?`· اتدفع <span class="num">${money0(paid)}</span> من <span class="num">${money0(net)}</span>`:'';
+    $('#pList').innerHTML=pays.map((p,i)=>`<div class="kv" style="padding:6px 0;align-items:center">
+        <span>${dayLabel(p.date)} · ${esc(acctOf(p.acct).name)}${p.pre?' · <small style="color:var(--dim)">قبل التطبيق</small>':''}</span>
+        <span style="display:flex;gap:10px;align-items:center"><b>${money(p.amount)}</b>
+          <button type="button" data-rmpay="${i}" aria-label="امسح الدفعة" style="color:var(--red);font-size:17px;line-height:1">×</button></span></div>`).join('')
+      +(pays.length?'<div class="perf" style="margin:6px 0 10px"></div>':'');
+    $('#pAL').textContent=paid>0?'دفعة جديدة':'عربون أو دفعة وصلتك';
+    $('#pAll').textContent=left>0?`اكتب ${paid>0?'الباقي':'المبلغ'} كله (${money0(left)})`:'';
+    $('#pAll').hidden=!(left>0);
+    /* only payments dated before the app's first entry can already be in the opening balance */
+    $('#pPreW').hidden=!(($('#pD').value||today())<appStart());
   };
+  $('#pList').onclick=e=>{ const b=e.target.closest('[data-rmpay]'); if(!b) return; pays.splice(+b.dataset.rmpay,1); upd(); };
+  $('#pAll').onclick=()=>{ const left=Math.max(0,netNow()-pays.reduce((s,p)=>s+p.amount,0)); $('#pA').value=Math.round(left*100)/100; };
   $('#sCh').onclick=e=>{
     const b=e.target.closest('[data-ch]'); if(!b) return;
     ch=b.dataset.ch;
     $('#sCh').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.ch===ch));
     /* platforms pay into the bank, direct guests usually pay cash */
-    if(!acctTouched) $('#sA').value=ch==='direct'?cashAcct():bankAcct();
-    if(!id && ch==='direct') $('#sP').checked=true;
+    if(!acctTouched) $('#pAc').value=ch==='direct'?cashAcct():bankAcct();
     upd();
   };
-  $('#sA').onchange=()=>{acctTouched=true;};
-  ['sN','sT','sFee','sP'].forEach(k=>$('#'+k).addEventListener('input',upd));
-  $('#sP').onchange=upd;
+  $('#pAc').onchange=()=>{acctTouched=true;};
+  ['sN','sT','sFee','pD'].forEach(k=>$('#'+k).addEventListener('input',upd));
   upd();
   $('#sOk').onclick=async()=>{
     const n=Number($('#sN').value)|0, T=Number($('#sT').value), F=ch==='direct'?0:Number($('#sFee').value)||0;
     if(!(n>=1)){ $('#sN').focus(); return toast('عدد الليالي لازم يكون ١ أو أكتر'); }
     if(!(T>0)){ $('#sT').focus(); return; }
     if(F<0||F>T){ $('#sFee').focus(); return toast('العمولة لازم تكون أقل من الإجمالي'); }
+    const A=Number($('#pA').value)||0;
+    if(A<0){ $('#pA').focus(); return; }
+    let added=null;
+    if(A>0){
+      const d=$('#pD').value||today();
+      added={id:uid(),amount:A,date:d,acct:$('#pAc').value,pre:!$('#pPreW').hidden&&$('#pPre').checked};
+      pays.push(added);
+    }
+    const paid=pays.reduce((s,p)=>s+p.amount,0);
+    if(paid>T-F+0.005){ if(added) pays.pop(); $('#pA').focus(); return toast(`المدفوع (${money0(paid)}) أكتر من صافي الحجز (${money0(T-F)})`); }
+    const before=(st.pays||[]).map(p=>({...p}));
     const v={unit:$('#sU').value.trim(),guest:$('#sG').value.trim(),from:$('#sF').value||today(),nights:n,total:T,fee:F,
-      channel:ch,paidOn:$('#sP').checked?($('#sD').value||today()):'',acct:$('#sA').value,cat:$('#sC').value,note:$('#sNt').value.trim()};
+      channel:ch,pays,cat:$('#sC').value,note:$('#sNt').value.trim()};
     let rec=st;
     if(id) Object.assign(st,v);
     else{ rec={id:uid(),at:Date.now(),...v}; S.stays.push(rec); }
-    await syncStayTx(rec);
+    await syncStayTx(rec,before);
     await Store.put('stay',rec);
     if(!id) S.stayMonth=rec.from.slice(0,7);
     closeSheet(); renderWal(); renderRail(); renderAccts(); renderLog();
-    toast(rec.paidOn?`اتسجل دخل <span class="a">+${money(stayNet(rec))}</span> ${esc(S.settings.cur)}`:'اتسجل الحجز — مستني التحويل');
+    const left=stayLeft(rec);
+    toast(added&&!added.pre?`اتسجل دخل <span class="a">+${money(added.amount)}</span> ${cur}${left>0?` · فاضل ${money0(left)}`:''}`
+      :added?`اتسجلت الدفعة من غير ما تتزود على الرصيد${left>0?` · فاضل ${money0(left)}`:''}`
+      :left>0?`اتسجل الحجز · فاضل ${money0(left)}`:'تم');
   };
   const d=$('#sDel');
   if(d) d.onclick=async()=>{
-    if(!confirm(st.tx?'حذف الحجز؟ الدخل اللي اتسجل معاه هيتمسح كمان.':'حذف الحجز ده؟')) return;
-    st.paidOn=''; await syncStayTx(st);
+    if(!confirm((st.pays||[]).some(p=>p.tx)?'حذف الحجز؟ الدخل اللي اتسجل معاه هيتمسح كمان.':'حذف الحجز ده؟')) return;
+    const before=st.pays||[]; st.pays=[]; await syncStayTx(st,before);
     await Store.del('stay',id); S.stays=S.stays.filter(x=>x.id!==id);
     closeSheet(); renderWal(); renderRail(); renderAccts(); renderLog(); toast('اتحذف');
   };
@@ -2394,9 +2444,9 @@ function exportCsv(){
       S.rents.map(r=>['',r.tenant,r.unit||'',r.amount,(r.paid||[]).join(' '),
         Object.entries(r.part||{}).map(([m,v])=>`${m} (${v})`).join(' ')].map(q).join(',')).join('\n');
   if(S.stays.length)
-    csv+='\n\n'+['الحجوزات','الوحدة','الضيف','الوصول','الليالي','الإجمالي','العمولة','الصافي','المصدر','وصلت يوم','الحساب'].map(q).join(',')+'\n'+
+    csv+='\n\n'+['الحجوزات','الوحدة','الضيف','الوصول','الليالي','الإجمالي','العمولة','الصافي','المصدر','المدفوع','الباقي','الدفعات'].map(q).join(',')+'\n'+
       S.stays.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(st=>['',st.unit||'',st.guest||'',st.from,st.nights,st.total,st.fee||0,stayNet(st),
-        CH[st.channel].name,st.paidOn||'',st.paidOn?acctOf(st.acct).name:''].map(q).join(',')).join('\n');
+        CH[st.channel].name,stayPaid(st),stayLeft(st),(st.pays||[]).map(p=>`${p.date} ${p.amount} ${acctOf(p.acct).name}`).join(' / ')].map(q).join(',')).join('\n');
   download(`masareef-${today()}.csv`,csv,'text/csv;charset=utf-8');
   toast('اتصدر ملف CSV');
 }
@@ -2447,6 +2497,10 @@ function importJson(){
     S.cats=d.cats.slice().sort((a,b)=>a.order-b.order);
     S.tx=d.tx.slice(); sortTx();
     S.recur=lists.recur; S.debts=lists.debt; S.plans=lists.plan; S.rents=lists.rent; S.stays=lists.stay;
+    for(const st of S.stays) if(!st.pays){
+      st.pays=st.paidOn?[{id:uid(),amount:stayNet(st),date:st.paidOn,acct:st.acct,tx:st.tx}]:[];
+      delete st.paidOn; delete st.tx; await Store.put('stay',st);
+    }
     S.recons=lists.recon.slice().sort((a,b)=>a.date.localeCompare(b.date));
     S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;
     S.lastCat.ref=S.lastCat.exp;
