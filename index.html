@@ -60,7 +60,9 @@ input,select,textarea{font-family:inherit;font-size:16px;color:var(--chalk)}
 .noscroll{scrollbar-width:none;-ms-overflow-style:none}
 [hidden]{display:none!important}
 
-#app{display:flex;flex-direction:column;height:100%;max-width:520px;margin:0 auto;position:relative}
+/* pinned to the screen's edges rather than «100% tall»: after the keyboard closes, iPhone home-screen
+   apps can be left with a shorter 100%, which cut the save button off under the tab bar */
+#app{display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;right:0;max-width:520px;margin:0 auto}
 .view{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;flex-direction:column;min-height:0}
 .view.on{display:flex}
 .scroll{padding:0 var(--pad) 26px}
@@ -89,7 +91,7 @@ input,select,textarea{font-family:inherit;font-size:16px;color:var(--chalk)}
 
 /* entry screen: the amount and the keypad share whatever height is left
    (after the notch, the home bar and the strips), so the save button always fits */
-#v-entry{overflow:hidden}
+#v-entry{overflow-y:auto}
 .readout{flex:1 1 auto;min-height:118px;margin:12px var(--pad) 12px;padding:14px 16px;text-align:center;
          display:flex;flex-direction:column;justify-content:center;border-radius:22px;color:#fff;
          background:var(--grad);position:relative;overflow:hidden;transition:background .3s;
@@ -857,6 +859,12 @@ function showLock(){
     }
   };
 }
+/* iPhone can leave the page scrolled after the keyboard closes — put it back */
+document.addEventListener('focusout',()=>setTimeout(()=>{
+  const a=document.activeElement;
+  if(!a||!/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){ window.scrollTo(0,0); document.body.scrollTop=0; }
+},150));
+
 /* lock again after a minute in the background */
 let hiddenAt=0;
 document.addEventListener('visibilitychange',()=>{
