@@ -849,7 +849,36 @@ function checkBackup(d){
   return '';
 }
 
+/* fix what can be fixed in a backup instead of refusing the whole file:
+   numbers stored as text, dates with a time part, records without an id, broken rows.
+   Returns {d, skipped} — `skipped` counts the rows that had to be dropped. */
+function repairBackup(raw){
+  if(!raw||typeof raw!=='object') return {d:null,skipped:0};
+  const d={...raw}; let skipped=0;
+  const list=k=>Array.isArray(d[k])?d[k]:[];
+  const hasId=x=>x&&typeof x==='object'&&(typeof x.id==='string'||typeof x.id==='number');
+  const day=v=>{ const m=String(v||'').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); return m?`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`:''; };
+  let n=0; const newId=()=>'r'+Date.now().toString(36)+(n++);
+  for(const k of ['cats','acct','recur','debt','recon','plan','rent','stay','goal','tx']){
+    const out=[];
+    for(const x of list(k)){
+      if(!x||typeof x!=='object'){ skipped++; continue; }
+      const y=hasId(x)?{...x}:{...x,id:newId()};
+      if(k==='tx'){
+        y.amount=Number(y.amount); y.date=day(y.date);
+        if(!(isFinite(y.amount)&&y.amount>0)||!y.date){ skipped++; continue; }
+      }
+      if(k==='recon'){ y.date=day(y.date); if(!y.date){ skipped++; continue; } }
+      if(k==='stay'){ y.from=day(y.from); y.total=Number(y.total); y.nights=Number(y.nights)||1;
+        if(!y.from||!(y.total>=0)){ skipped++; continue; } }
+      out.push(y);
+    }
+    d[k]=out;
+  }
+  return {d,skipped};
+}
+
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayOut,stayNightsIn,staySummary,stayClashes,unitMonth,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,CAT_WORDS,checkBackup};
+  parseSentence,guessCat,CAT_WORDS,checkBackup,repairBackup};
