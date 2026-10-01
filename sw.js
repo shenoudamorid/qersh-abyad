@@ -1,4 +1,4 @@
-const CACHE = 'masareef-v26';
+const CACHE = 'masareef-v27';
 const SHELL = ['./', './index.html', './logic.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -29,11 +29,15 @@ self.addEventListener('fetch', e => {
   }
 
   // App shell: network-first so updates land, falling back to cache offline.
+  // Only good answers replace the cache: if the site ever answers 404 (a renamed repo,
+  // Pages switched off), the app keeps opening from its saved copy with all its data.
+  const saved = () => caches.match(req).then(hit => hit || caches.match('./index.html'));
   e.respondWith(
     fetch(req).then(res => {
+      if (!res.ok) return saved().then(hit => hit || res);
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
       return res;
-    }).catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
+    }).catch(saved)
   );
 });
