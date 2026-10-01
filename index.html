@@ -633,12 +633,13 @@ function applyMode(){
     if(c.kind==='exp' && typeof c.fixed!=='boolean'){
       c.fixed=['فواتير','بيت ومعيشة'].includes(c.name); ch=true;
     }
+    if(!Array.isArray(c.words)){ c.words=[...(CAT_WORDS[c.name]||[])]; ch=true; }
     if(ch) await Store.put('cats',c);
   }
   if(!catsOf('exp').length)
-    for(let i=0;i<DEF_EXP.length;i++){ const c={id:uid(),...DEF_EXP[i],kind:'exp',order:i,budget:0}; S.cats.push(c); await Store.put('cats',c); }
+    for(let i=0;i<DEF_EXP.length;i++){ const c={id:uid(),...DEF_EXP[i],kind:'exp',order:i,budget:0,words:[...(CAT_WORDS[DEF_EXP[i].name]||[])]}; S.cats.push(c); await Store.put('cats',c); }
   if(!catsOf('inc').length)
-    for(let i=0;i<DEF_INC.length;i++){ const c={id:uid(),...DEF_INC[i],kind:'inc',order:i,budget:0}; S.cats.push(c); await Store.put('cats',c); }
+    for(let i=0;i<DEF_INC.length;i++){ const c={id:uid(),...DEF_INC[i],kind:'inc',order:i,budget:0,words:[...(CAT_WORDS[DEF_INC[i].name]||[])]}; S.cats.push(c); await Store.put('cats',c); }
   S.cats.sort((a,b)=>a.order-b.order);
 
   if(!S.accts.length){
@@ -755,7 +756,7 @@ function setKind(k){
   if(k!=='exp') document.body.classList.add('k-'+k);
   $('#kinds').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===k));
   moveInd();
-  if(k!=='trf') S.draft.cat=S.lastCat[k]||catsOf(k)[0].id;
+  if(k!=='trf'){ S.draft.cat=S.lastCat[k]||catsOf(k)[0].id; S.draft.catPicked=false; }
   $('#save').textContent=KINDS[k].save;
   const trf=k==='trf';
   $('#toLbl').hidden=!trf; $('#toAccts').hidden=!trf;
@@ -812,7 +813,7 @@ function renderCats(){
 }
 $('#cats').addEventListener('click',e=>{
   const b=e.target.closest('[data-cat]'); if(!b) return;
-  S.draft.cat=b.dataset.cat; S.lastCat[S.draft.kind]=b.dataset.cat;
+  S.draft.cat=b.dataset.cat; S.draft.catPicked=true; S.lastCat[S.draft.kind]=b.dataset.cat;
   renderCats(); renderQuick(); renderReadout();
 });
 
@@ -1005,6 +1006,9 @@ $('#noteBtn').addEventListener('click',()=>{
       <button class="go" id="fOk">تم</button></div>`);
   $('#fOk').onclick=()=>{
     S.draft.note=$('#fNote').value.trim();
+    /* no chip tapped yet → let the note pick the category («شاورما» → أكل وشرب) */
+    const g=S.draft.kind!=='trf'&&!S.draft.catPicked&&guessCat(S.draft.note,catsOf(S.draft.kind));
+    if(g){ S.draft.cat=g.id; renderCats(); }
     S.draft.date=$('#fDate').value||today();
     S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null;
     closeSheet(); renderReadout();
@@ -1046,7 +1050,7 @@ $('#save').addEventListener('click',async()=>{
   if(k==='trf') t.toAcct=S.draft.toAcct; else t.cat=S.draft.cat;
   if(cc){ t.ccy=cc.code; t.raw=raw; t.rate=cc.rate; }
   if(k!=='trf') S.lastCat[k]=S.draft.cat;
-  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null;
+  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false;
   await commit(t);
 });
 
@@ -2070,7 +2074,7 @@ function ccySheet(i){
 }
 
 function catSheet(id,kind){
-  const c=id?S.cats.find(x=>x.id===id):{emoji:'💠',name:'',budget:0,kind,fixed:false};
+  const c=id?S.cats.find(x=>x.id===id):{emoji:'💠',name:'',budget:0,kind,fixed:false,words:[]};
   const k=c.kind;
   sheet(`<h2>${id?'تعديل التصنيف':(k==='inc'?'تصنيف دخل جديد':'تصنيف مصروف جديد')}</h2>
     <div class="f"><div class="row2">
@@ -2078,6 +2082,8 @@ function catSheet(id,kind){
       ${k==='exp'?`<div><label>ميزانية شهرية (0 = بدون)</label><input id="cB" type="number" inputmode="decimal" min="0" step="1" value="${c.budget||0}"></div>`:'<div></div>'}
     </div></div>
     <div class="f"><label>الاسم</label><input id="cN" maxlength="24" placeholder="${k==='inc'?'مثلاً: إيجار الشقة':'مثلاً: صيانة العربية'}" value="${esc(c.name)}"></div>
+    <div class="f"><label>كلمات بتختار التصنيف ده لوحدها (افصل بفاصلة)</label>
+      <textarea id="cW" rows="3" placeholder="${k==='inc'?'مثلاً: راتب، بونص':'مثلاً: شاورما، قهوة، كارفور'}">${esc((c.words||[]).join('، '))}</textarea></div>
     ${k==='exp'?`<label class="chk"><input type="checkbox" id="cF" ${c.fixed?'checked':''}>
       <span>مصروف ملتزم بيه (إيجار، فواتير، قسط) — مش اختياري</span></label>`:''}
     <div class="acts">
@@ -2086,7 +2092,8 @@ function catSheet(id,kind){
   $('#cOk').onclick=async()=>{
     const n=$('#cN').value.trim(); if(!n){$('#cN').focus();return;}
     const v={emoji:$('#cE').value.trim()||'💠',name:n,
-      budget:$('#cB')?Number($('#cB').value)||0:0, fixed:$('#cF')?$('#cF').checked:false};
+      budget:$('#cB')?Number($('#cB').value)||0:0, fixed:$('#cF')?$('#cF').checked:false,
+      words:[...new Set($('#cW').value.split(/[,،\n]+/).map(w=>w.trim()).filter(Boolean))]};
     if(id){ Object.assign(c,v); await Store.put('cats',c); }
     else{ const nc={id:uid(),...v,kind:k,order:S.cats.length}; S.cats.push(nc); await Store.put('cats',nc); }
     closeSheet(); renderCats(); renderSet(); renderReadout(); toast('تم');

@@ -118,6 +118,24 @@ test('parseSentence', async t => {
     const p = L.parseSentence('100 حاجة', ctx);
     assert.equal(p.cat, 'food'); assert.equal(p.acct, 'cash'); assert.equal(p.note, 'حاجة');
   });
+  await t.test('a category keyword picks it and stays in the note', () => {
+    const c = { ...ctx, expCats: [ctx.expCats[0], { id: 'trans', name: 'مواصلات', words: ['اوبر', 'بنزين'] },
+      { id: 'bills', name: 'فواتير', words: ['كهربا', 'كارت شحن'] }, { id: 'home', name: 'بيت', words: ['كهربائي'] }] };
+    let p = L.parseSentence('٣٠ اوبر فيزا', c);
+    assert.equal(p.cat, 'trans'); assert.equal(p.acct, 'visa'); assert.equal(p.note, 'اوبر');
+    assert.equal(L.parseSentence('120 كهربا', c).cat, 'bills');
+    assert.equal(L.parseSentence('50 كارت شحن', c).cat, 'bills');
+    assert.equal(L.parseSentence('50 شحن', c).cat, 'food'); // a phrase needs all its words
+  });
+  await t.test('guessCat reads a note', () => {
+    const cats = [{ id: 'food', name: 'أكل وشرب', words: ['شاورما'] }, { id: 'trans', name: 'مواصلات', words: ['بنزين'] }];
+    assert.equal(L.guessCat('بنزين العربية', cats).id, 'trans');
+    assert.equal(L.guessCat('الأكل', cats).id, 'food');
+    assert.equal(L.guessCat('حاجة', cats), null);
+  });
+  await t.test('default keywords cover the default categories', () => {
+    for (const n of ['أكل وشرب', 'مواصلات', 'فواتير', 'صحة', 'تسوق', 'المرتب']) assert.ok(L.CAT_WORDS[n].length);
+  });
   await t.test('no amount', () => {
     assert.equal(L.parseSentence('أكل', ctx), null);
     assert.equal(L.parseSentence('0 أكل', ctx), null);

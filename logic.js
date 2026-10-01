@@ -147,7 +147,44 @@ function tokMatch(a,b){
 const REF_W=['مرتجع','رجعت','استرجاع','مردود'];
 const INC_W=['دخل','قبضت','استلمت','مرتب','عموله','عمولات','ايجار','ارباح','حصلت'];
 
-/* ctx: {accts, expCats, incCats, pro, lastCat:{exp,inc,ref}, acct} */
+/* starter keywords for the default categories, by category name. Seeded into
+   each category's editable `words` list once; a keyword that shows up in the
+   text picks its category but stays in the note (unlike the category's name). */
+const CAT_WORDS={
+  'أكل وشرب':['فطار','غدا','غداء','عشا','عشاء','مطعم','كافيه','قهوة','شاي','نسكافيه','عصير','مياه','ميه','بيبسي',
+    'كولا','فول','طعمية','فلافل','كشري','شاورما','بيتزا','برجر','فراخ','لحمة','سمك','جمبري','كباب','كفتة',
+    'حواوشي','سندوتش','ساندوتش','ساندويتش','عيش','فينو','جبنة','لبن','زبادي','بيض','خضار','فاكهة','طماطم',
+    'بطاطس','رز','مكرونة','سكر','زيت','بقالة','سوبرماركت','ماركت','كارفور','هايبر','حلويات','جاتوه','تورتة',
+    'كيك','شيكولاتة','ايس كريم','ايسكريم','شيبسي','بسكويت','سناكس','طلبات','دليفري','ماكدونالدز','كنتاكي',
+    'سوشي','فطير','كريب','بن','تموين','جزار','فكهاني','خضري'],
+  'مواصلات':['اوبر','uber','careem','كريم','ديدي','اندرايف','indrive','تاكسي','ميكروباص','مكروباص','توكتوك',
+    'تكتك','اتوبيس','باص','مترو','قطر','قطار','سوبرجيت','بنزين','سولار','جاز','عربية','موقف','جراج','ركنة',
+    'كارتة','تذكرة','ميكانيكي','مكانيكي','كاوتش','ترخيص','مخالفة','سواق','غسيل العربية','زيت العربية'],
+  'بيت ومعيشة':['شقة','منظفات','صابون','مسحوق','اريال','برسيل','كلور','فلاش','مناديل','شامبو','معجون',
+    'اثاث','عفش','نجار','سباك','كهربائي','نقاش','دهان','صيانة','تصليح','بواب','شغالة','مكوجي','مطبخ',
+    'اطباق','ستاير','سجاد','مفروشات','ملايات','لمبة','اسانسير','حاجات البيت'],
+  'الولد':['ولد','عيال','اطفال','طفل','بيبي','بامبرز','حفاضات','لبن اطفال','حضانة','مدرسة','مدارس','دروس',
+    'درس','مدرس','سنتر','كتب','كراسات','شنطة المدرسة','باص المدرسة','يونيفورم','لعب','لعبة','العاب','تمرين'],
+  'فواتير':['كهربا','كهرباء','نور','عداد','غاز','نت','انترنت','واي فاي','وايفاي','راوتر','باقة','رصيد',
+    'كارت شحن','شحن','فودافون','اورنج','اتصالات','وي','تليفون','ارضي','اشتراك','قسط','اقساط','تامين',
+    'ضرايب','ضريبة','زبالة','نظافة','فاتورة','فاتورة الميه','فاتورة المياه'],
+  'صحة':['دكتور','دكتورة','طبيب','كشف','عيادة','مستشفى','صيدلية','دوا','دواء','ادوية','علاج','تحليل',
+    'تحاليل','اشعة','سونار','اسنان','ضروس','نضارة','نظارة','عدسات','جيم','فيتامين','حقنة','عملية','روشتة',
+    'بنادول','مضاد'],
+  'ترفيه':['سينما','فيلم','خروجة','فسحة','رحلة','مصيف','ساحل','سفر','فندق','نادي','بلايستيشن','بلاي',
+    'نتفليكس','netflix','شاهد','سبوتيفاي','يوتيوب','شيشة','سجاير','سجائر','دخان','معسل','حفلة','ماتش',
+    'ملاهي','كافيه بلايستيشن'],
+  'تسوق':['لبس','هدوم','ملابس','قميص','بنطلون','جزمة','كوتشي','شوز','فستان','جاكيت','تيشيرت','بلوزة',
+    'شنطة','ساعة','برفان','عطر','ميكب','مكياج','ميك اب','اكسسوار','اكسسوارات','موبايل','سماعة','شاحن',
+    'لابتوب','كمبيوتر','جهاز','اجهزة','امازون','amazon','نون','noon','جوميا','shein','شي ان','مول','سوق'],
+  'أخرى':['هدية','هدايا','صدقة','زكاة','تبرع','عيدية','نقوط','عشور','كنيسة','جامع','رسوم','بريد'],
+  'المرتب':['راتب','قبض','salary','بونص','حافز','حوافز','مكافأة'],
+  'عمولات':['عمولة','كوميشن','تارجت'],
+  'إيجار الشقة':['ساكن','ايجار'],
+  'دخل آخر':['فريلانس','مشروع','بيع','شغل اضافي']
+};
+
+/* ctx: {accts, expCats, incCats, pro, lastCat:{exp,inc,ref}, acct} — a category may carry `words` */
 function parseSentence(raw,ctx){
   const s=normDigits(String(raw||''));
   const m=s.match(/\d+(\.\d+)?/);
@@ -159,37 +196,20 @@ function parseSentence(raw,ctx){
   const used=new Array(toks.length).fill(false);
   const hasW=list=>keys.some((k,i)=>!used[i]&&list.some(w=>tokMatch(k,stripAl(w))));
 
-  /* score a set of named items against the unused tokens */
-  const score=(items,nameOf)=>{
-    let best=null,bs=0,bh=[];
-    for(const it of items){
-      const nt=tokOf(nameOf(it)).map(stripAl).filter(w=>w.length>=2);
-      if(!nt.length) continue;
-      let sc=0,hit=[];
-      for(const w of nt){
-        for(let i=0;i<keys.length;i++){
-          if(used[i]||hit.includes(i)) continue;
-          if(tokMatch(keys[i],w)){ sc+=w.length; hit.push(i); break; }
-        }
-      }
-      if(sc>bs){ bs=sc; best=it; bh=hit; }
-    }
-    return {best,score:bs,hit:bh};
-  };
-
   /* accounts first — their names are the most distinctive */
-  const aM=score(ctx.accts,a=>a.name);
+  const aM=scoreItems(keys,used,ctx.accts,a=>a.name);
   if(aM.best) aM.hit.forEach(i=>used[i]=true);
 
   const refHit=ctx.pro&&hasW(REF_W), incHit=hasW(INC_W);
-  const eM=score(ctx.expCats,c=>c.name);
-  const iM=score(ctx.incCats,c=>c.name);
+  const eM=scoreItems(keys,used,ctx.expCats,c=>c.name,c=>c.words);
+  const iM=scoreItems(keys,used,ctx.incCats,c=>c.name,c=>c.words);
   let kind;
   if(refHit) kind='ref';
   else if(iM.score>eM.score) kind='inc';
   else if(eM.score>iM.score) kind='exp';
   else kind=incHit?'inc':'exp';
 
+  /* only the category's own name leaves the note — a keyword ("شاورما") is worth keeping */
   const cM = kind==='inc'?iM:eM;
   if(cM.best) cM.hit.forEach(i=>used[i]=true);
 
@@ -204,6 +224,41 @@ function parseSentence(raw,ctx){
   return {amount,kind,
     cat:(cM.best&&cM.best.id)||ctx.lastCat[kind]||(cats[0]&&cats[0].id),
     acct:(aM.best&&aM.best.id)||ctx.acct, note};
+}
+
+/* best match among named items for the unused tokens. The name scores word by word
+   (`hit` = the tokens it used); each keyword phrase counts only when all its words are there. */
+function scoreItems(keys,used,items,nameOf,wordsOf){
+  let best=null,bs=0,bh=[];
+  for(const it of items){
+    const taken=[], hit=[];
+    const find=w=>{
+      for(let i=0;i<keys.length;i++)
+        if(!used[i]&&!taken.includes(i)&&tokMatch(keys[i],w)) return i;
+      return -1;
+    };
+    let sc=0;
+    for(const w of tokOf(nameOf(it)).map(stripAl).filter(w=>w.length>=2)){
+      const i=find(w); if(i<0) continue;
+      sc+=w.length; taken.push(i); hit.push(i);
+    }
+    for(const ph of (wordsOf&&wordsOf(it))||[]){
+      const ws=tokOf(ph).map(stripAl).filter(Boolean), at=[];
+      for(const w of ws){ const i=find(w); if(i<0) break; at.push(i); taken.push(i); }
+      /* score the overlap, plus one for an exact word, so «كهربا» prefers itself over «كهربائي» */
+      if(ws.length && at.length===ws.length)
+        ws.forEach((w,j)=>{ const k=keys[at[j]]; sc+=Math.min(k.length,w.length)+(k===w?1:0); });
+      else taken.splice(taken.length-at.length,at.length);
+    }
+    if(sc>bs){ bs=sc; best=it; bh=hit; }
+  }
+  return {best,score:bs,hit:bh};
+}
+
+/* the category a free-text note points to (by name or keyword), or null */
+function guessCat(text,cats){
+  const keys=tokOf(normDigits(String(text||''))).map(stripAl);
+  return scoreItems(keys,keys.map(()=>false),cats,c=>c.name,c=>c.words).best;
 }
 
 /* ═══════ backup ═══════ */
@@ -228,4 +283,4 @@ function checkBackup(d){
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,dueItems,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,checkBackup};
+  parseSentence,guessCat,CAT_WORDS,checkBackup};
