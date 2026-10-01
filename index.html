@@ -2861,14 +2861,21 @@ async function exportJson(){
   renderSet(); toast('النسخة الاحتياطية جاهزة');
 }
 function importJson(){
-  const i=document.createElement('input'); i.type='file'; i.accept='.json,application/json';
+  /* no `accept` filter: iPhone sometimes saves the backup under another type and greys it out */
+  const i=document.createElement('input'); i.type='file';
   i.onchange=async()=>{
     const f=i.files[0]; if(!f) return;
-    let d;
-    try{ d=JSON.parse(await f.text()); }catch(e){ return toast('الملف مش صالح'); }
-    if(checkBackup(d)) return toast('الملف مش صالح');
-    if(!confirm('الاسترجاع هيمسح البيانات الحالية ويحل مكانها. هنحفظلك نسخة من بياناتك الحالية الأول. تكمل؟')) return;
-    if(S.tx.length||S.debts.length||S.rents.length||S.stays.length||S.plans.length||S.recur.length) download(`qersh-abyad-before-restore-${today()}.json`,backupJson(),'application/json');
+    let raw;
+    try{ raw=JSON.parse((await f.text()).replace(/^\ufeff/,'')); }
+    catch(e){ return alert('الملف ده مش نسخة احتياطية من التطبيق (مش بصيغة JSON).\nاختار الملف اللي اسمه زي qersh-abyad-backup-….json أو masareef-backup-….json'); }
+    const {d,skipped}=repairBackup(raw);
+    const bad=d?checkBackup(d):'not an object';
+    if(bad) return alert('الملف ده مش نسخة احتياطية كاملة من التطبيق.\n('+bad+')');
+    const n=d.tx.length;
+    if(!confirm(`النسخة فيها ${n} حركة${d.stay&&d.stay.length?` و${d.stay.length} حجز`:''}.\nالاسترجاع هيحط البيانات دي مكان البيانات الحالية على الموبايل ده. تكمل؟`)) return;
+    /* a safety copy of what's here now, kept inside the app instead of a download
+       (on iPhone a download in the middle can interrupt the restore) */
+    if(S.tx.length) await Store.put('meta',{id:'preRestore',at:Date.now(),v:backupJson()}).catch(()=>{});
 
     let accts=d.acct||[];
     if(!accts.length) accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
@@ -2906,7 +2913,8 @@ function importJson(){
     S.draft.toAcct=(liveAccts()[1]||liveAccts()[0]).id;
     applyTheme(); applyMode();
     renderAccts(); renderCats(); renderQuick(); renderSet(); renderRail(); renderReadout(); renderLog(); renderWal();
-    toast('اترجعت البيانات');
+    alert(`اترجعت البيانات ✅\n${n} حركة${S.stays.length?` · ${S.stays.length} حجز`:''}${S.accts.length?` · ${S.accts.length} حساب`:''}${skipped?`\n(${skipped} سطر بايظ في الملف اتساب)`:''}`);
+    go('log');
   };
   i.click();
 }

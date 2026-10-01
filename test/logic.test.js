@@ -345,3 +345,20 @@ test('amounts in words (dictation)', () => {
   assert.equal(p.cat, 'food'); assert.equal(p.acct, 'visa'); assert.equal(p.note, 'شاورما');
   assert.equal(amt('70 خمسين'), 70);   // digits win
 });
+
+test('repairBackup fixes instead of refusing', () => {
+  const raw = { tx: [
+      { id: 'a', amount: '50', date: '2026-10-01T10:00:00Z', kind: 'exp' },   // text amount, time in date
+      { amount: 20, date: '2026-9-5' },                                          // no id, short date
+      { id: 'c', amount: 'x', date: '2026-10-01' },                              // broken: dropped
+      null ],
+    cats: [{ id: 1, name: 'أكل' }], stay: [{ id: 's', from: '2026-10-03', total: '4500', nights: '3' }] };
+  const { d, skipped } = L.repairBackup(raw);
+  assert.equal(skipped, 2);
+  assert.equal(d.tx.length, 2);
+  assert.equal(d.tx[0].amount, 50); assert.equal(d.tx[0].date, '2026-10-01');
+  assert.equal(d.tx[1].date, '2026-09-05'); assert.ok(d.tx[1].id);
+  assert.equal(d.stay[0].total, 4500); assert.equal(d.stay[0].nights, 3);
+  assert.equal(L.checkBackup(d), '');
+  assert.equal(L.repairBackup(null).d, null);
+});
