@@ -135,3 +135,82 @@ test('checkBackup', () => {
   assert.ok(L.checkBackup({ ...ok, tx: [{ id: 'a', amount: '5', date: '2026-10-01' }] }));
   assert.ok(L.checkBackup({ ...ok, tx: [{ id: 'a', amount: 5, date: '1/10/2026' }] }));
 });
+
+test('budgetCross', () => {
+  assert.equal(L.budgetCross(700, 900, 1000), 'near');
+  assert.equal(L.budgetCross(900, 1100, 1000), 'over');
+  assert.equal(L.budgetCross(500, 1100, 1000), 'over');
+  assert.equal(L.budgetCross(1100, 1200, 1000), '');   // already over: no repeat nag
+  assert.equal(L.budgetCross(850, 900, 1000), '');     // already past 80%
+  assert.equal(L.budgetCross(100, 200, 0), '');        // no budget
+  assert.equal(L.budgetCross(900, 800, 1000), '');     // went down (refund)
+});
+
+test('recurringDue weekly', () => {
+  // 2026-10-01 is a Thursday (dow 4)
+  const now = D(2026, 10, 15);
+  const fresh = L.recurringDue({ freq: 'week', dow: 4, since: '2026-10-01' }, now);
+  assert.deepEqual(fresh.map(d => d.date), ['2026-10-01', '2026-10-08', '2026-10-15']);
+  const later = L.recurringDue({ freq: 'week', dow: 4, since: '2026-10-01', lastDate: '2026-10-08' }, now);
+  assert.deepEqual(later.map(d => d.date), ['2026-10-15']);
+  assert.deepEqual(L.recurringDue({ freq: 'week', dow: 4, lastDate: '2026-10-15' }, now), []);
+  // capped at 12 months back
+  const old = L.recurringDue({ freq: 'week', dow: 4, lastDate: '2020-01-02' }, now);
+  assert.equal(old[0].date >= '2025-11-01', true);
+  assert.ok(old.length <= 53);
+});
+
+test('recurringDue yearly', () => {
+  const now = D(2026, 10, 1);
+  // new item created today for a date already passed this year: waits for next year
+  assert.deepEqual(L.recurringDue({ freq: 'year', mon: 3, day: 15, since: '2026-10-01' }, now), []);
+  // created earlier in the year, date has now arrived
+  assert.deepEqual(L.recurringDue({ freq: 'year', mon: 9, day: 20, since: '2026-01-01' }, now).map(d => d.date), ['2026-09-20']);
+  // last posted 2025, this year's date arrived
+  assert.deepEqual(L.recurringDue({ freq: 'year', mon: 3, day: 15, lastDate: '2025-03-15' }, now).map(d => d.date), ['2026-03-15']);
+  // day 29 in February clamps to the 28th in non-leap years
+  assert.deepEqual(L.recurringDue({ freq: 'year', mon: 2, day: 29, lastDate: '2026-02-28' }, D(2027, 3, 1)).map(d => d.date), ['2027-02-28']);
+  assert.deepEqual(L.recurringDue({ freq: 'year', mon: 2, day: 29, lastDate: '2027-02-28' }, D(2028, 3, 1)).map(d => d.date), ['2028-02-29']);
+});
+
+test('rent partial payments', () => {
+  const r = { amount: 1000, dueDay: 5, paid: ['2026-08'], part: { '2026-09': 400 } };
+  assert.equal(L.rentPaid(r, '2026-08'), 1000);
+  assert.equal(L.rentLeft(r, '2026-08'), 0);
+  assert.equal(L.rentPaid(r, '2026-09'), 400);
+  assert.equal(L.rentLeft(r, '2026-09'), 600);
+  assert.equal(L.rentLeft(r, '2026-10'), 1000);
+  assert.equal(L.rentDueDate({ dueDay: 31 }, '2026-02'), '2026-02-28');
+});
+
+test('debt partial payments', () => {
+  const d = { amount: 500, pays: [{ date: '2026-09-01', amount: 200 }, { date: '2026-09-10', amount: 50 }] };
+  assert.equal(L.debtPaid(d), 250);
+  assert.equal(L.debtLeft(d), 250);
+  assert.equal(L.debtLeft({ ...d, settledAt: '2026-09-11' }), 0);
+  assert.equal(L.debtLeft({ amount: 100 }), 100);
+});
+
+test('dueItems', () => {
+  const now = D(2026, 10, 10);
+  const items = L.dueItems({
+    debts: [
+      { id: 'd1', person: 'A', dir: 'out', amount: 300, due: '2026-10-05', pays: [{ amount: 100 }] },
+      { id: 'd2', person: 'B', dir: 'in', amount: 50, due: '2026-10-15' },
+      { id: 'd3', person: 'C', dir: 'in', amount: 50, due: '2026-11-15' },
+      { id: 'd4', person: 'D', dir: 'in', amount: 50, due: '2026-10-01', settledAt: '2026-10-02' },
+      { id: 'd5', person: 'E', dir: 'in', amount: 50 }
+    ],
+    plans: [{ id: 'p1', name: 'school', amount: 900, date: '2026-10-12' }, { id: 'p2', name: 'x', amount: 1, date: '2026-10-12', done: true }],
+    rents: [{ id: 'r1', tenant: 'T', amount: 1000, dueDay: 5, start: '2026-09-01', paid: [], part: { '2026-09': 400 } }]
+  }, now);
+  // sorted by date: rent's oldest unpaid month (Sep 5) comes first
+  assert.deepEqual(items.map(i => i.id), ['r1', 'd1', 'p1', 'd2']);
+  assert.equal(items[1].amount, 200);
+  assert.equal(items[1].late, true);
+  const rent = items[0];
+  assert.equal(rent.months, 2);
+  assert.equal(rent.amount, 1600);
+  assert.equal(rent.late, true);
+  assert.equal(items[3].late, false);
+});
