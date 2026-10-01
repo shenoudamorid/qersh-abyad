@@ -432,12 +432,85 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
   nav button{padding:6px 0 5px}
   nav button svg{padding:3px 14px}
 }
+/* ── fits any screen ──
+   the entry screen's two halves (amount + choices / keypad + save) stack on a phone held upright,
+   and sit side by side when there is width to spare (phone sideways, iPad, computer) */
+.ent-a,.ent-b{display:contents}
+#app{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+/* still too tall? the app tightens itself step by step (fitEntry adds fit1, then fit2) */
+#v-entry.fit1 .rail{padding-top:calc(var(--sat) + 8px);padding-bottom:6px}
+#v-entry.fit1 .rail h1{font-size:17px}
+#v-entry.fit1 .rail .mtd{padding:4px 9px}
+#v-entry.fit1 .kinds{padding:3px}
+#v-entry.fit1 .kinds .ind{top:3px;bottom:3px;right:3px}
+#v-entry.fit1 .kinds button{padding:5px 2px;font-size:12.5px}
+#v-entry.fit1 .readout{min-height:78px;margin:7px var(--pad);padding:6px 12px;border-radius:18px}
+#v-entry.fit1 .readout .amt{font-size:clamp(30px,10vw,42px)}
+#v-entry.fit1 .readout .tag{margin-top:5px;padding:2px 10px;font-size:12px}
+#v-entry.fit1 .striplbl{display:none}
+#v-entry.fit1 .strip{padding-bottom:6px}
+#v-entry.fit1 .c{padding:5px 10px;font-size:12.5px}
+#v-entry.fit1 .c em{width:20px;height:20px;font-size:12px}
+#v-entry.fit1 .keys{min-height:148px;gap:5px}
+#v-entry.fit1 .k{font-size:20px}
+#v-entry.fit1 .savebar{padding:7px var(--pad) 6px}
+#v-entry.fit1 .save{padding:11px}
+#v-entry.fit2 .rail .sub{display:none}
+#v-entry.fit2 .readout{min-height:58px;margin:5px var(--pad)}
+#v-entry.fit2 .readout .amt{font-size:clamp(26px,9vw,34px)}
+#v-entry.fit2 .readout .tag{display:none}
+#v-entry.fit2 .keys{min-height:120px;gap:3px}
+#v-entry.fit2 .k{font-size:18px}
+#v-entry.fit2 .savebar{padding:5px var(--pad) 4px}
+#v-entry.fit2 .save{padding:9px}
+
+/* side by side: phone held sideways, or a wide screen */
+@media (orientation:landscape) and (max-height:560px), (orientation:landscape) and (min-width:760px){
+  #v-entry{flex-direction:row;overflow:hidden}
+  .ent-a,.ent-b{display:flex;flex-direction:column;flex:1 1 0;min-width:0;min-height:0}
+  .ent-a{overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .ent-a .readout{flex:1 1 auto}
+  .ent-b{padding-top:calc(var(--sat) + 12px)}
+  .ent-b .keys{flex:1 1 auto;max-height:none;min-height:0}
+}
+@media (orientation:landscape) and (max-height:560px){
+  #app{max-width:none}
+  .ent-a .readout{min-height:64px}
+  .ent-b{padding-top:8px}
+  .ent-b .k{font-size:20px}
+  .ent-b .keys{gap:4px}
+  .ent-b .savebar{padding:6px var(--pad) 6px}
+  .ent-b .save{padding:10px}
+  nav button{padding:4px 0 3px}
+  nav button svg{padding:2px 14px}
+}
+/* iPad / computer: more room for everything; lists stay a comfortable reading width */
+@media (min-width:760px){
+  #app{max-width:980px;border-inline:1px solid var(--line)}
+  .ent-a{flex:1.15 1 0}
+  .ent-b{padding-bottom:12px;justify-content:center}
+  .ent-a .readout{max-height:250px}
+  .ent-b .keys{max-height:440px}
+  .k{font-size:30px}
+  .view:not(#v-entry)>*{width:100%;max-width:720px;margin-inline:auto}
+  nav{justify-content:center}
+  nav.n4{grid-template-columns:repeat(4,minmax(0,150px))}
+  nav.n5{grid-template-columns:repeat(5,minmax(0,150px))}
+  .sheet{max-width:600px}
+}
+/* iPad held upright: one column, a bit wider than a phone */
+@media (orientation:portrait) and (min-width:760px){
+  #app{max-width:640px}
+  .readout{max-height:260px}
+  .keys{max-height:380px}
+}
 </style>
 </head>
 <body class="dark">
 <div id="app">
 
   <section class="view on" id="v-entry">
+   <div class="ent-a">
     <div class="rail">
       <div><h1 id="today">اليوم</h1><div class="sub" id="todaySub"></div>
         <button class="duebtn" id="dueBtn" hidden></button></div>
@@ -459,7 +532,9 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
     <div class="strip noscroll" id="cats"></div>
     <div class="striplbl" id="quickLbl" hidden>تكرار سريع — دوسة واحدة تسجّل</div>
     <div class="strip noscroll" id="quick" hidden></div>
+   </div>
 
+   <div class="ent-b">
     <div class="keys" id="keys"></div>
 
     <div class="savebar">
@@ -467,6 +542,7 @@ nav button.fab.on svg{width:20px;height:20px;padding:4px 16px;margin-top:0;borde
       <button class="mini" id="noteBtn" aria-label="ملاحظة وتاريخ"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>
       <button class="save" id="save" disabled>سجّل المصروف</button>
     </div>
+   </div>
   </section>
 
   <section class="view" id="v-log">
@@ -877,6 +953,20 @@ fitScreen();
 ['resize','orientationchange','pageshow'].forEach(e=>window.addEventListener(e,()=>setTimeout(fitScreen,60)));
 if(window.visualViewport) visualViewport.addEventListener('resize',()=>setTimeout(fitScreen,60));
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) setTimeout(fitScreen,60); });
+
+/* The entry screen tightens itself when it doesn't fit (small phone, long names, extra strips):
+   try roomy first, then fit1, then fit2 — whatever shows everything with the save button in view. */
+function fitEntry(){
+  const v=$('#v-entry'); if(!v||!v.classList.contains('on')) return;
+  const over=()=>[v,...v.querySelectorAll('.ent-a,.ent-b')].some(e=>e.clientHeight && e.scrollHeight>e.clientHeight+1);
+  v.classList.remove('fit1','fit2');
+  if(over()){ v.classList.add('fit1'); if(over()) v.classList.add('fit2'); }
+}
+if(window.ResizeObserver){
+  const ro=new ResizeObserver(()=>fitEntry());
+  ro.observe($('#v-entry')); [...$('#v-entry').querySelectorAll('.rail,.kinds,.strip,.savebar')].forEach(e=>ro.observe(e));
+}
+window.addEventListener('resize',()=>setTimeout(fitEntry,80));
 
 /* iPhone can leave the page scrolled after the keyboard closes — put it back */
 document.addEventListener('focusout',()=>setTimeout(()=>{
@@ -1387,7 +1477,7 @@ function go(g){
   if(g==='rep') renderRep();
   if(g==='wal') renderWal();
   if(g==='set') renderSet();
-  if(g==='entry'){ renderRail(); renderQuick(); renderAccts(); renderReadout(); }
+  if(g==='entry'){ renderRail(); renderQuick(); renderAccts(); renderReadout(); fitEntry(); }
 }
 document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
 const VIEWS=['entry','log','rep','wal','set'];
