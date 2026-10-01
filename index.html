@@ -727,6 +727,7 @@ function applyMode(){
   await Store.open();
   const st=(await Store.all('meta')).find(m=>m.id==='settings');
   if(st) S.settings={...S.settings,...st.v};
+  if(S.settings.micOff){ delete S.settings.micOff; saveSettings(); }
   if(S.settings.lock&&S.settings.lock.pin) showLock();
   if(!Array.isArray(S.settings.currencies)) S.settings.currencies=[];
   if(!['simple','pro'].includes(S.settings.mode)) S.settings.mode='simple';
@@ -1283,27 +1284,31 @@ $('#nlBtn').addEventListener('click',()=>{
     $('#nlHint').innerHTML=msg+'<br>دوس على <b>🎤</b> اللي في الكيبورد (جنب المسافة) واتكلم — بيكتب في الخانة على طول.';
     $('#nlHint').hidden=false; $('#nlIn').focus();
   };
+  /* the mic is tried every time — iPhone's speech service can fail once (network, mic busy)
+     and work the next time, so a failure is never remembered */
+  let rec=null;
   if($('#nlMic')) $('#nlMic').onclick=()=>{
-    if(S.settings.micOff) return kbMic('مايك التطبيق مش متاح على الموبايل ده.');
-    const m=$('#nlMic'), langs=['ar-EG','ar-SA','ar'];
-    let heard=false;
+    const m=$('#nlMic');
+    if(rec){ try{ rec.stop(); }catch(_){} return; }          // second tap = stop listening
+    $('#nlHint').hidden=true;
+    const langs=['ar-EG','ar-SA','ar'];
     const go=li=>{
-      const r=new SR(); r.lang=langs[li]; r.interimResults=true; r.maxAlternatives=1;
+      const r=new SR(); rec=r; r.lang=langs[li]; r.interimResults=true; r.maxAlternatives=1;
       m.classList.add('has');
-      r.onresult=e=>{ heard=true; $('#nlIn').value=[...e.results].map(x=>x[0].transcript).join(' '); upd(); };
-      r.onend=()=>m.classList.remove('has');
-      r.onerror=async e=>{
-        m.classList.remove('has');
+      r.onresult=e=>{ $('#nlIn').value=[...e.results].map(x=>x[0].transcript).join(' '); upd(); };
+      r.onend=()=>{ m.classList.remove('has'); if(rec===r) rec=null; };
+      r.onerror=e=>{
+        m.classList.remove('has'); if(rec===r) rec=null;
         const err=e.error||'';
         if(err==='language-not-supported' && li<langs.length-1) return go(li+1);
-        if(err==='no-speech'||err==='aborted') return toast('ماسمعتش حاجة — دوس على المايك واتكلم على طول');
+        if(err==='no-speech') return toast('ماسمعتش حاجة — دوس على المايك واتكلم على طول');
+        if(err==='aborted') return;
+        if(err==='network') return kbMic('التعرّف على الصوت محتاج نت — اتأكد إن النت شغال وجرّب تاني.');
+        if(err==='audio-capture') return kbMic('المايك مستخدم في حاجة تانية دلوقتي (مكالمة أو تطبيق تاني) — اقفلها وجرّب تاني.');
         if(err==='not-allowed') return kbMic('التطبيق مش واخد إذن المايك — من إعدادات الآيفون ← Safari ← المايكروفون اختار «اسأل» أو «اسمح».');
-        /* iPhone home-screen apps aren't allowed speech recognition («service-not-allowed»):
-           remember it and go straight to the keyboard next time */
-        if(!heard){ S.settings.micOff=true; await saveSettings(); }
-        kbMic('آيفون مش بيسمح لتطبيقات الشاشة الرئيسية تستخدم التعرّف على الصوت.');
+        kbMic('المايك ماشتغلش المرة دي — دوس عليه تاني، ولو فضل كده استخدم مايك الكيبورد.');
       };
-      try{ r.start(); }catch(_){ m.classList.remove('has'); kbMic('مايك التطبيق مش متاح هنا.'); }
+      try{ r.start(); }catch(_){ m.classList.remove('has'); rec=null; kbMic('المايك ماشتغلش المرة دي — دوس عليه تاني.'); }
     };
     go(0);
   };
