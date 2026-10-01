@@ -1241,9 +1241,10 @@ const parseEntry=raw=>parseSentence(raw,{accts:liveAccts(),expCats:catsOf('exp')
   pro:PRO(),lastCat:S.lastCat,acct:S.draft.acct});
 $('#nlBtn').addEventListener('click',()=>{
   sheet(`<h2>تسجيل بجملة</h2>
-    <p class="lede">اكتب المبلغ والتصنيف والحساب في سطر واحد. مثال: <b>٥٠ أكل كاش</b> أو <b>20000 مرتب فيزا</b>.</p>
+    <p class="lede">اكتب أو قول المبلغ والتصنيف والحساب في سطر واحد. مثال: <b>٥٠ أكل كاش</b> أو <b>خمسين شاورما فيزا</b>.</p>
     <div class="f" style="display:flex;gap:8px"><input id="nlIn" placeholder="50 أكل كاش" autocomplete="off">
       ${SR?'<button class="mini" id="nlMic" aria-label="اتكلم" style="height:auto;width:50px"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>':''}</div>
+    <div id="nlHint" class="banner" style="margin:0 0 12px" hidden></div>
     <div id="nlOut" style="font-size:13px;color:var(--dim);min-height:22px"></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="nlOk">سجّل</button></div>`);
@@ -1254,13 +1255,34 @@ $('#nlBtn').addEventListener('click',()=>{
       : 'اكتب رقم على الأقل';
   };
   $('#nlIn').oninput=upd;
+  /* the keyboard's own dictation always works, so that's the fallback for every failure */
+  const kbMic=msg=>{
+    $('#nlHint').innerHTML=msg+'<br>دوس على <b>🎤</b> اللي في الكيبورد (جنب المسافة) واتكلم — بيكتب في الخانة على طول.';
+    $('#nlHint').hidden=false; $('#nlIn').focus();
+  };
   if($('#nlMic')) $('#nlMic').onclick=()=>{
-    const r=new SR(); r.lang='ar-EG'; r.interimResults=true;
-    const m=$('#nlMic'); m.classList.add('has');
-    r.onresult=e=>{ $('#nlIn').value=[...e.results].map(x=>x[0].transcript).join(' '); upd(); };
-    r.onend=()=>m.classList.remove('has');
-    r.onerror=()=>{ m.classList.remove('has'); toast('مقدرتش أسمع — جرّب مايك الكيبورد'); };
-    try{ r.start(); }catch(e){ m.classList.remove('has'); }
+    if(S.settings.micOff) return kbMic('مايك التطبيق مش متاح على الموبايل ده.');
+    const m=$('#nlMic'), langs=['ar-EG','ar-SA','ar'];
+    let heard=false;
+    const go=li=>{
+      const r=new SR(); r.lang=langs[li]; r.interimResults=true; r.maxAlternatives=1;
+      m.classList.add('has');
+      r.onresult=e=>{ heard=true; $('#nlIn').value=[...e.results].map(x=>x[0].transcript).join(' '); upd(); };
+      r.onend=()=>m.classList.remove('has');
+      r.onerror=async e=>{
+        m.classList.remove('has');
+        const err=e.error||'';
+        if(err==='language-not-supported' && li<langs.length-1) return go(li+1);
+        if(err==='no-speech'||err==='aborted') return toast('ماسمعتش حاجة — دوس على المايك واتكلم على طول');
+        if(err==='not-allowed') return kbMic('التطبيق مش واخد إذن المايك — من إعدادات الآيفون ← Safari ← المايكروفون اختار «اسأل» أو «اسمح».');
+        /* iPhone home-screen apps aren't allowed speech recognition («service-not-allowed»):
+           remember it and go straight to the keyboard next time */
+        if(!heard){ S.settings.micOff=true; await saveSettings(); }
+        kbMic('آيفون مش بيسمح لتطبيقات الشاشة الرئيسية تستخدم التعرّف على الصوت.');
+      };
+      try{ r.start(); }catch(_){ m.classList.remove('has'); kbMic('مايك التطبيق مش متاح هنا.'); }
+    };
+    go(0);
   };
   $('#nlIn').onkeydown=e=>{ if(e.key==='Enter') $('#nlOk').click(); };
   upd();

@@ -322,3 +322,26 @@ test('bookings: clashes, unit profit, WhatsApp, arrivals', async t => {
     assert.equal(L.learnPhrase('50'), '');
   });
 });
+
+test('amounts in words (dictation)', () => {
+  const ctx = {
+    accts: [{ id: 'cash', name: 'كاش' }, { id: 'visa', name: 'فيزا' }],
+    expCats: [{ id: 'food', name: 'أكل وشرب', words: ['شاورما'] }, { id: 'trans', name: 'مواصلات' }],
+    incCats: [{ id: 'sal', name: 'المرتب' }],
+    pro: true, lastCat: { exp: 'food', inc: 'sal' }, acct: 'cash'
+  };
+  const amt = x => { const p = L.parseSentence(x, ctx); return p && p.amount; };
+  assert.equal(amt('خمسين أكل كاش'), 50);
+  assert.equal(amt('خمسة وعشرين مواصلات'), 25);
+  assert.equal(amt('ميتين وخمسين شاورما'), 250);
+  assert.equal(amt('ألف وخمسمية'), 1500);
+  assert.equal(amt('ألف ونص فيزا'), 1500);
+  assert.equal(amt('تلات آلاف'), 3000);
+  assert.equal(amt('ألفين وتلتمية'), 2300);
+  assert.equal(amt('مية وعشرة'), 110);
+  assert.equal(amt('تلتاشر'), 13);
+  assert.equal(amt('أكل'), null);
+  const p = L.parseSentence('خمسين شاورما فيزا', ctx);
+  assert.equal(p.cat, 'food'); assert.equal(p.acct, 'visa'); assert.equal(p.note, 'شاورما');
+  assert.equal(amt('70 خمسين'), 70);   // digits win
+});

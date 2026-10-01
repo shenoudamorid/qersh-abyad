@@ -210,6 +210,37 @@ function learnPhrase(note){
   if(!w.length || w.length>3) return '';
   return w.join(' ').slice(0,30);
 }
+/* amounts said in words — dictation writes «خمسين» or «ألف وخمسمية», not 50 / 1500.
+   Keys are in norm() form (ة→ه, أ→ا). */
+const NUM_W={
+  'واحد':1,'واحده':1,'اتنين':2,'اثنين':2,'اتنان':2,'تلاته':3,'ثلاثه':3,'تلات':3,'ثلاث':3,'اربعه':4,'اربع':4,
+  'خمسه':5,'خمس':5,'سته':6,'ست':6,'سبعه':7,'سبع':7,'تمانيه':8,'ثمانيه':8,'تمن':8,'تسعه':9,'تسع':9,'عشره':10,'عشر':10,
+  'حداشر':11,'اتناشر':12,'تلتاشر':13,'اربعتاشر':14,'اربعطاشر':14,'خمستاشر':15,'خمسطاشر':15,'ستاشر':16,'سبعتاشر':17,'سبعطاشر':17,
+  'تمنتاشر':18,'تمنطاشر':18,'تسعتاشر':19,'تسعطاشر':19,
+  'عشرين':20,'تلاتين':30,'ثلاثين':30,'اربعين':40,'خمسين':50,'ستين':60,'سبعين':70,'تمانين':80,'ثمانين':80,'تسعين':90,
+  'ميه':100,'مايه':100,'مائه':100,'ميت':100,'ميتين':200,'مايتين':200,'مئتين':200,'مائتين':200,
+  'تلتميه':300,'تلاتميه':300,'ثلاثمائه':300,'ثلثمائه':300,'ربعميه':400,'اربعميه':400,'اربعمائه':400,
+  'خمسميه':500,'خمسمائه':500,'ستميه':600,'ستمائه':600,'سبعميه':700,'سبعمائه':700,
+  'تمنميه':800,'تمانميه':800,'ثمانمائه':800,'تسعميه':900,'تسعمائه':900,
+  'الفين':2000,'الفان':2000
+};
+const NUM_MUL={'الف':1000,'الاف':1000,'الوف':1000,'مليون':1e6,'ملايين':1e6};
+/* the first run of number words in `toks`: {value,start,end} (end exclusive), or null */
+function wordNumber(toks){
+  const key=w=>{ const n=norm(w); if(NUM_W[n]!=null||NUM_MUL[n]||n==='نص') return n;
+    return n.length>2&&n.startsWith('و')&&(NUM_W[n.slice(1)]!=null||NUM_MUL[n.slice(1)]||n.slice(1)==='نص')?n.slice(1):''; };
+  let i=toks.findIndex(t=>key(t)&&key(t)!=='نص'&&!(norm(t).startsWith('و')&&key(t)!==norm(t)));
+  if(i<0) return null;
+  const start=i; let total=0, cur=0, last=1;
+  for(;i<toks.length;i++){
+    const k=key(toks[i]); if(!k) break;
+    if(k==='نص'){ cur+=last/2; continue; }
+    if(NUM_MUL[k]){ total+=(cur||1)*NUM_MUL[k]; cur=0; last=NUM_MUL[k]; continue; }
+    const v=NUM_W[k]; cur+=v; last=v>=1000?1000:v>=100?100:v>=10?10:1;
+  }
+  const value=total+cur;
+  return value>0?{value,start,end:i}:null;
+}
 const REF_W=['مرتجع','رجعت','استرجاع','مردود'];
 const INC_W=['دخل','قبضت','استلمت','مرتب','عموله','عمولات','ايجار','ارباح','حصلت'];
 
@@ -712,10 +743,16 @@ const CAT_WORDS={
 function parseSentence(raw,ctx){
   const s=normDigits(String(raw||''));
   const m=s.match(/\d+(\.\d+)?/);
-  if(!m) return null;
-  const amount=Number(m[0]);
+  let amount, toks;
+  if(m){
+    amount=Number(m[0]);
+    toks=tokOf(s.slice(0,m.index)+' '+s.slice(m.index+m[0].length));
+  }else{
+    const all=tokOf(s), w=wordNumber(all);
+    if(!w) return null;
+    amount=w.value; toks=all.filter((_,i)=>i<w.start||i>=w.end);
+  }
   if(!(amount>0)) return null;
-  const toks=tokOf(s.slice(0,m.index)+' '+s.slice(m.index+m[0].length));
   const keys=toks.map(stripAl);
   const used=new Array(toks.length).fill(false);
   const hasW=list=>keys.some((k,i)=>!used[i]&&list.some(w=>tokMatch(k,stripAl(w))));
@@ -814,5 +851,5 @@ function checkBackup(d){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayOut,stayNightsIn,staySummary,stayClashes,unitMonth,waNumber,dueItems,learnPhrase,norm,normDigits,stripAl,tokOf,tokMatch,
+  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayOut,stayNightsIn,staySummary,stayClashes,unitMonth,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,CAT_WORDS,checkBackup};
