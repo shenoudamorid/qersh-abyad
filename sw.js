@@ -1,5 +1,5 @@
-const CACHE = 'masareef-v30';
-const SHELL = ['./', './index.html', './logic.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
+const CACHE = 'masareef-v31';
+const SHELL = ['./', './index.html', './logic.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './vendor/html2canvas.min.js', './vendor/jspdf.umd.min.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
