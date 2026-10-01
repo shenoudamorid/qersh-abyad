@@ -528,6 +528,12 @@ const acctOpts=sel=>{
   return list.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.emoji} ${esc(a.name)}${a.archived?' (مقفول)':''}</option>`).join('');
 };
 const defAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]||{id:''}).id;
+/* taking `amt` out of account `id` would leave it negative: ask before going ahead */
+const okToTake=(id,amt,before=0)=>{
+  if(!id) return true;
+  const after=balance(id)+before-amt;
+  return after>=-0.005 || confirm(`${acctOf(id).name} فيه ${money(balance(id)+before)} بس، وهيبقى بالسالب (${money(after)}). تكمل؟`);
+};
 const viaLabel=id=>{ const a=S.accts.find(x=>x.id===id); return a?`${a.emoji} ${esc(a.name)}`:''; };
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ccyOf=code=>S.settings.currencies.find(c=>c.code===code);
@@ -1067,8 +1073,23 @@ function matches(t,q){
       || catOf(t.cat).name.toLowerCase().includes(q) || acctOf(t.acct).name.toLowerCase().includes(q)
       || t.date.includes(q);
 }
+/* debt money that went through an account, as log rows (pro only, like the balances they move) */
+function debtLogRows(){
+  if(!PRO()) return [];
+  return S.debts.flatMap(d=>{
+    const r=d.acct?[{d,pay:false,date:d.date,acct:d.acct,amount:d.amount}]:[];
+    for(const p of (d.pays||[])) if(p.acct) r.push({d,pay:true,date:p.date,acct:p.acct,amount:p.amount});
+    return r;
+  });
+}
+const debtRowName=x=>x.d.dir==='out'?(x.pay?`سداد من ${x.d.person}`:`سلفة لـ${x.d.person}`)
+                                    :(x.pay?`سداد لـ${x.d.person}`:`استلاف من ${x.d.person}`);
 function renderLog(){
   let list=S.tx;
+  /* debt rows have no kind or category, so those filters leave them out */
+  let dl=S.filter.kind||S.filter.cat?[]:debtLogRows();
+  if(S.filter.acct) dl=dl.filter(x=>x.acct===S.filter.acct);
+  if(S.search){ const q=norm(S.search); dl=dl.filter(x=>norm(debtRowName(x)+' '+(x.d.note||'')).includes(q)||String(x.amount).includes(S.search.trim())); }
   if(S.filter.kind) list=list.filter(t=>t.kind===S.filter.kind);
   if(S.filter.cat) list=list.filter(t=>t.cat===S.filter.cat);
   if(S.filter.acct) list=list.filter(t=>t.acct===S.filter.acct||t.toAcct===S.filter.acct);
@@ -1076,18 +1097,21 @@ function renderLog(){
   const active=S.filter.cat||S.filter.acct||S.filter.kind;
   $('#logFilter').textContent=active?'إلغاء التصفية':'تصفية';
   const tot=sum(list.filter(t=>t.kind==='exp'))-sum(list.filter(t=>t.kind==='ref'));
-  $('#logSub').innerHTML=list.length
-    ?`${list.length} حركة${S.search||active?` · <span class="num">${money0(tot)}</span> ${esc(S.settings.cur)} مصاريف`:''}`
+  const n=list.length+dl.length;
+  $('#logSub').innerHTML=n
+    ?`${n} حركة${S.search||active?` · <span class="num">${money0(tot)}</span> ${esc(S.settings.cur)} مصاريف`:''}`
     :'فاضي';
 
-  if(!list.length){
+  if(!n){
     $('#logBody').innerHTML=`<div class="empty"><div class="h">مفيش حركات هنا</div>
       <div class="p">${S.search?'مفيش نتايج للبحث ده.':active?'مفيش نتايج للتصفية دي.':'أول حاجة تسجلها هتظهر في المكان ده.'}</div></div>`;
     return;
   }
-  const g={}; list.forEach(t=>{(g[t.date]=g[t.date]||[]).push(t);});
-  $('#logBody').innerHTML=Object.keys(g).sort((a,b)=>b.localeCompare(a)).map(d=>{
-    const day=g[d];
+  const g={}, gd={};
+  list.forEach(t=>{(g[t.date]=g[t.date]||[]).push(t);});
+  dl.forEach(x=>{(gd[x.date]=gd[x.date]||[]).push(x);});
+  $('#logBody').innerHTML=[...new Set([...Object.keys(g),...Object.keys(gd)])].sort((a,b)=>b.localeCompare(a)).map(d=>{
+    const day=g[d]||[];
     const dE=sum(day.filter(t=>t.kind==='exp'))-sum(day.filter(t=>t.kind==='ref'));
     const dI=sum(day.filter(t=>t.kind==='inc'));
     const net=dI-dE, anyInc=day.some(t=>t.kind==='inc');
@@ -1103,7 +1127,16 @@ function renderLog(){
         <span class="meta"><span class="nm">${esc(name)}</span>${bits.length?`<span class="nt">${esc(bits.join(' · '))}</span>`:''}</span>
         ${isTrf?'':`<span class="pill">${esc(acctOf(t.acct).name)}</span>`}
         <span class="val${cls}">${sign}${money(t.amount)}</span></button>`;
-    }).join('<div class="perf"></div>');
+    }).concat((gd[d]||[]).map(x=>{
+      const plus=(x.d.dir==='in')!==x.pay;
+      return `<button class="row" data-debtrow="${x.d.id}">
+        <em>${x.d.dir==='out'?'↗':'↘'}</em>
+        <span class="meta"><span class="nm">${esc(debtRowName(x))}</span><span class="nt">سلف${x.d.note&&!x.pay?' · '+esc(x.d.note):''}</span></span>
+        <span class="pill">${esc(acctOf(x.acct).name)}</span>
+        <span class="val trf">${plus?'+':'−'}${money(x.amount)}</span></button>`;
+    })).join('<div class="perf"></div>');
+    if(!day.length) return `<div class="daygrp"><div class="dayhd"><span class="d">${dayLabel(d)}</span></div>
+      <div class="roll">${rows}</div></div>`;
     const totTxt=anyInc?(net>=0?'+'+money(net):money(net)):money(dE);
     return `<div class="daygrp"><div class="dayhd"><span class="d">${dayLabel(d)}</span>
       <span class="t num"${anyInc?` style="color:${net>=0?'var(--mint)':'var(--red)'}"`:''}>${totTxt} <span style="font-size:11px;color:var(--dim)">${esc(S.settings.cur)}</span></span></div>
@@ -1111,7 +1144,10 @@ function renderLog(){
   }).join('');
   S.tx.forEach(t=>delete t._new);
 }
-$('#logBody').addEventListener('click',e=>{ const b=e.target.closest('[data-tx]'); if(b) editTx(b.dataset.tx); });
+$('#logBody').addEventListener('click',e=>{
+  const b=e.target.closest('[data-tx]'); if(b) return editTx(b.dataset.tx);
+  const r=e.target.closest('[data-debtrow]'); if(r) debtSheet(r.dataset.debtrow);
+});
 $('#logSearch').addEventListener('click',()=>{
   const w=$('#searchWrap'); w.hidden=!w.hidden;
   $('#logSearch').textContent=w.hidden?'بحث':'إخفاء';
@@ -1725,9 +1761,12 @@ function debtSheet(id){
     if(!(a>0)){ $('#dA').focus(); return; }
     const v={person:p,amount:a,dir:$('#dDir').value,date:$('#dD').value||today(),
       due:$('#dU').value||'',note:$('#dN').value.trim(),acct:$('#dV').value};
+    /* on an edit, what this debt already took out of the account is given back first */
+    const had=id&&d.acct===v.acct&&d.dir==='out'?d.amount:0;
+    if(v.dir==='out' && !okToTake(v.acct,a,had)) return;
     if(id){ Object.assign(d,v); if(!d.settledAt && debtPaid(d)>=d.amount) d.settledAt=today(); await Store.put('debt',d); }
     else{ const nd={id:uid(),...v,at:Date.now(),settledAt:'',pays:[]}; S.debts.push(nd); await Store.put('debt',nd); }
-    closeSheet(); debtChanged(); toast(!id&&v.acct?`تم — ${v.dir==='out'?'اتخصم من':'اتضاف لـ'} ${esc(acctOf(v.acct).name)}`:'تم');
+    closeSheet(); debtChanged(); toast(!id&&v.acct?`تم — ${v.dir==='out'?'اتخصم من':'اتضاف على'} ${esc(acctOf(v.acct).name)}`:'تم');
   };
   const ds=$('#dSet');
   if(ds) ds.onclick=async()=>{
@@ -1753,7 +1792,7 @@ function debtSheet(id){
     await Store.del('debt',id); S.debts=S.debts.filter(x=>x.id!==id);
     closeSheet(); debtChanged(); toast('اتحذف'); };
 }
-function debtChanged(){ renderAccts(); renderRail(); renderWal();
+function debtChanged(){ renderAccts(); renderRail(); renderWal(); renderLog();
 }
 
 function debtPaySheet(id,full){
@@ -1773,12 +1812,13 @@ function debtPaySheet(id,full){
     if(!(a>0) || a>left+0.005){ $('#ppA').focus(); return toast(`المبلغ لازم يكون أكبر من 0 ولحد ${money(left)}`); }
     const date=$('#ppD').value||today();
     const via=$('#ppV').value;
+    if(d.dir==='in' && !okToTake(via,a)) return;
     d.pays=[...(d.pays||[]),{date,amount:a,acct:via,at:Date.now()}];
     if(debtPaid(d)>=d.amount-0.005) d.settledAt=date;
     await Store.put('debt',d);
     closeSheet(); debtChanged();
     toast((d.settledAt?'اتسددت بالكامل':`فاضل ${money0(debtLeft(d))} ${cur}`)
-      +(via?` · ${d.dir==='out'?'اتضاف لـ':'اتخصم من'} ${esc(acctOf(via).name)}`:''));
+      +(via?` · ${d.dir==='out'?'اتضاف على':'اتخصم من'} ${esc(acctOf(via).name)}`:''));
   };
 }
 
