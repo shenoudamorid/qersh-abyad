@@ -474,3 +474,26 @@ test('bought on credit', () => {
   assert.equal(L.creditLeft({ ...t, credit: { ...t.credit, settledAt: '2026-10-06' } }), 0);
   assert.deepEqual(L.creditFlows({ kind: 'exp', amount: 5 }), []);
 });
+
+test('accounts in another currency', () => {
+  const usd = { id: 'usd', ccy: 'USD', opening: 1000, openRate: 48 };
+  const txs = [
+    // bought 500 $ for 25,000 ج from the bank
+    { kind: 'trf', acct: 'bank', toAcct: 'usd', amount: 25000, toCcy: 'USD', toRaw: 500 },
+    // spent 20 $ from the dollar account (980 ج at the time)
+    { kind: 'exp', acct: 'usd', amount: 980, ccy: 'USD', raw: 20, rate: 49 },
+    // sold 100 $ into cash for 5,100 ج
+    { kind: 'trf', acct: 'usd', toAcct: 'cash', amount: 5100, ccy: 'USD', raw: 100 },
+    // an old euro-typed expense paid from the base-currency bank: only its ج amount touches the bank
+    { kind: 'exp', acct: 'bank', amount: 530, ccy: 'EUR', raw: 10, rate: 53 }];
+  const bal = id => txs.reduce((s, t) => s + L.txDelta(t, id), 0);
+  assert.equal(txs.reduce((s, t) => s + L.txDelta(t, 'usd', 'USD', 50), usd.opening), 1380);
+  assert.equal(bal('bank'), -25530);
+  assert.equal(bal('cash'), 5100);
+  const g = L.fxGain(usd, txs, 50);
+  assert.equal(g.balance, 1380); assert.equal(g.value, 69000);
+  assert.equal(g.cost, 48000 + 25000 - 980 - 5100);
+  assert.equal(g.gain, 69000 - 66920);
+  // a base amount landing in a foreign account without its own figure converts at today's rate
+  assert.equal(L.txDelta({ kind: 'inc', acct: 'usd', amount: 500 }, 'usd', 'USD', 50), 10);
+});
