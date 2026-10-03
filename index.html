@@ -329,6 +329,10 @@ nav button.fab.on svg{width:25px;height:25px;padding:4px 16px;margin-top:0;borde
 .sheet::before{content:"";position:absolute;top:9px;left:50%;width:38px;height:4px;margin-left:-19px;
        border-radius:2px;background:var(--ink3)}
 .sheet h2{margin:0 0 6px;font-size:18px;font-weight:700}
+/* close button: stays at the top corner while the sheet scrolls */
+.shXw{position:sticky;top:0;height:0;z-index:3}
+.shX{position:absolute;left:0;top:-12px;width:34px;height:34px;border-radius:50%;background:var(--ink3);
+     color:var(--dim);font-size:15px;line-height:34px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .sheet .lede{margin:0 0 15px;font-size:12.5px;color:var(--dim);line-height:1.65}
 .f{margin-bottom:13px}
 .f label{display:block;font-size:12.5px;color:var(--dim);margin-bottom:6px;font-weight:500}
@@ -777,13 +781,16 @@ function toast(html,undo,label='تراجع'){
   if(navigator.vibrate) try{navigator.vibrate(12)}catch(e){}
 }
 function sheet(html){
-  const sh=$('#sheet'); sh.innerHTML=html;
+  const sh=$('#sheet');
+  sh.innerHTML=`<div class="shXw"><button type="button" class="shX" aria-label="إغلاق" onclick="closeSheet()">✕</button></div>`+html;
+  sh.scrollTop=0;
   $('#scrim').classList.add('on'); sh.classList.add('on');
   const f=sh.querySelector('input:not([type=checkbox]),select,textarea');
   if(f) setTimeout(()=>f.focus(),260);
 }
 function closeSheet(){ $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on'); }
 $('#scrim').addEventListener('click',closeSheet);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && $('#sheet').classList.contains('on')) closeSheet(); });
 window.closeSheet=closeSheet;
 const saveSettings=()=>Store.put('meta',{id:'settings',v:S.settings});
 
