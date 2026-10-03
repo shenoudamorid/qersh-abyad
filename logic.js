@@ -19,13 +19,26 @@ function daysElapsed(mk,now){
 }
 
 /* ═══════ money ═══════ */
-/* signed effect of one transaction on account `id` */
-function txDelta(t,id){
+/* signed effect of one transaction on account `id`, in that account's currency.
+   An account can hold another currency (`ccy`, e.g. 'USD', worth `rate` of the base currency each).
+   A tx always carries `amount` in the base currency for reports; the foreign side is `raw` (in `ccy`)
+   on its own account and, for a transfer, `toRaw` (in `toCcy`) on the account it went to.
+   Without `ccy` (a base-currency account) only `amount` counts. */
+function txDelta(t,id,ccy,rate){
   /* bought on credit: the expense counts on the day of purchase, but money only leaves with each payment (creditFlows) */
   if(t.credit && t.kind==='exp') return 0;
-  if(t.kind==='trf') return (t.toAcct===id?t.amount:0)-(t.acct===id?t.amount:0);
+  const nat=(raw,c)=>!ccy?t.amount:(c===ccy&&raw!=null?raw:t.amount/(rate||1));
+  if(t.kind==='trf') return (t.toAcct===id?nat(t.toRaw,t.toCcy):0)-(t.acct===id?nat(t.raw,t.ccy):0);
   if(t.acct!==id) return 0;
-  return (t.kind==='inc'||t.kind==='ref') ? t.amount : -t.amount;
+  return (t.kind==='inc'||t.kind==='ref') ? nat(t.raw,t.ccy) : -nat(t.raw,t.ccy);
+}
+
+/* a foreign-currency account's gain or loss from the rate moving: what it's worth now in the base
+   currency, less what went into it (the opening at its rate then, plus every movement at its base value) */
+function fxGain(acct,txs,rate){
+  const nat=txs.reduce((s,t)=>s+txDelta(t,acct.id,acct.ccy,rate),acct.opening||0);
+  const cost=txs.reduce((s,t)=>s+txDelta(t,acct.id),(acct.opening||0)*(acct.openRate||rate));
+  return {balance:nat,value:nat*rate,cost,gain:nat*rate-cost};
 }
 
 /* does tx `t` fall after reconciliation `L`? Same-day tx logged after the count
@@ -984,7 +997,7 @@ function repairBackup(raw){
 }
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
-  txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
+  txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,CAT_WORDS,checkBackup,repairBackup};

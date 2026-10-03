@@ -719,17 +719,22 @@ const tone=c=>{
   return i<0?'':` style="--t:${(c.kind==='inc'?['#10B981','#3B82F6','#F59E0B','#64748B']:TONES)[i%(c.kind==='inc'?4:TONES.length)]}"`;
 };
 const liveAccts=()=>S.accts.filter(a=>!a.archived);
-/* live accounts, plus the selected one even if it's closed so editing never silently moves it */
-const acctOpts=sel=>{
-  const list=liveAccts().slice(), own=S.accts.find(a=>a.id===sel);
+/* an account holding euros / dollars: its code, today's rate, its symbol */
+const fxOf=a=>a&&a.ccy?ccyOf(a.ccy):null;
+const rateOf=a=>(fxOf(a)||{rate:1}).rate;
+const symOf=a=>fxOf(a)?fxOf(a).symbol:S.settings.cur;
+/* live accounts, plus the selected one even if it's closed so editing never silently moves it.
+   Foreign-currency accounts only appear where their amounts are handled (fx: true) — or when already selected */
+const acctOpts=(sel,fx)=>{
+  const list=liveAccts().filter(a=>fx||!a.ccy||a.id===sel), own=S.accts.find(a=>a.id===sel);
   if(own&&own.archived) list.push(own);
   return list.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.emoji} ${esc(a.name)}${a.archived?' (مقفول)':''}</option>`).join('');
 };
-const defAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]||{id:''}).id;
+const defAcct=()=>(liveAccts().find(a=>a.type==='cash'&&!a.ccy)||liveAccts().find(a=>!a.ccy)||liveAccts()[0]||{id:''}).id;
 /* taking `amt` out of a cash account would leave it negative: ask before going ahead.
    Bank / card accounts can legitimately go below zero (credit cards), so they don't ask. */
 const okToTake=(id,amt,before=0)=>{
-  if(!id || acctOf(id).type!=='cash') return true;
+  if(!id || acctOf(id).type!=='cash' || acctOf(id).ccy) return true;
   const after=balance(id)+before-amt;
   return after>=-0.005 || confirm(`${acctOf(id).name} فيه ${money(balance(id)+before)} بس، وهيبقى بالسالب (${money(after)}). تكمل؟`);
 };
@@ -761,11 +766,17 @@ const debtMoves=()=>S.debts.flatMap(debtFlows);
 /* every account movement outside a tx's own amount: debts, and payments on things bought on credit */
 const moneyMoves=()=>[...debtMoves(),...S.tx.flatMap(creditFlows)];
 const credits=()=>S.tx.filter(t=>t.credit);
+/* an account's balance in its own currency */
 function balance(id){
-  return S.tx.reduce((b,t)=>b+txDelta(t,id),acctOf(id).opening||0)
-    +moneyMoves().reduce((b,f)=>b+(f.acct===id?f.amount:0),0);
+  const a=acctOf(id), r=rateOf(a);
+  return S.tx.reduce((b,t)=>b+txDelta(t,id,a.ccy,r),a.opening||0)
+    +moneyMoves().reduce((b,f)=>b+(f.acct===id?f.amount/(a.ccy?r:1):0),0);
 }
-const netWorth=()=>liveAccts().reduce((s,a)=>s+balance(a.id),0);
+/* …and what it's worth in the base currency at today's rate */
+const balanceBase=id=>balance(id)*rateOf(acctOf(id));
+const netWorth=()=>liveAccts().reduce((s,a)=>s+balanceBase(a.id),0);
+/* «2,000 €» for a foreign account, «2,000» for a base one */
+const balTxt=(a,dec)=>`${(dec?money:money0)(balance(a.id))}${a.ccy?' '+esc(symOf(a)):''}`;
 
 function toast(html,undo,label='تراجع'){
   const t=$('#toast');
@@ -866,8 +877,8 @@ function applyMode(){
     }
   }
   S.accts.sort((a,b)=>a.order-b.order);
-  const aCash=S.accts.find(a=>a.type==='cash')||S.accts[0];
-  const aBank=S.accts.find(a=>a.type==='bank')||S.accts[S.accts.length-1];
+  const aCash=S.accts.find(a=>a.type==='cash'&&!a.ccy)||S.accts[0];
+  const aBank=S.accts.find(a=>a.type==='bank'&&!a.ccy)||S.accts[S.accts.length-1];
 
   for(const t of S.tx){
     let ch=false;
@@ -1118,6 +1129,12 @@ function moveInd(){
   $('#kInd').style.width=`calc((100% - 8px) * ${w/100})`;
   $('#kInd').style.transform=`translateX(${-i*100}%)`;
 }
+/* money spent from (or added to) a euro / dollar account is typed in that currency */
+function syncDraftCcy(){
+  const a=acctOf(S.draft.acct);
+  if(S.draft.kind!=='trf' && a && a.ccy){ S.draft.ccy=a.ccy; S.draft.ccyAuto=true; }
+  else if(S.draft.ccyAuto){ S.draft.ccy=null; S.draft.ccyAuto=false; }
+}
 function setKind(k){
   S.draft.kind=k;
   document.body.classList.remove('k-inc','k-trf','k-ref');
@@ -1126,6 +1143,7 @@ function setKind(k){
   moveInd();
   if(k!=='trf'){ S.draft.cat=S.lastCat[k]||catsOf(k)[0].id; S.draft.catPicked=false; S.draft.catGuessed=false; }
   if(k!=='trf') S.draft.fee=0;
+  syncDraftCcy();
   $('#save').textContent=KINDS[k].save;
   const trf=k==='trf';
   $('#toLbl').hidden=!trf; $('#toAccts').hidden=!trf;
@@ -1155,7 +1173,7 @@ function press(k){
 function renderAccts(){
   const k=S.draft.kind, list=liveAccts();
   const chip=(a,sel)=>`<button class="c" data-a="${a.id}" aria-pressed="${sel}">
-    <em${tone(a)}>${a.emoji}</em>${esc(a.name)}${PRO()?`<span class="bal">${money0(balance(a.id))}</span>`:''}</button>`;
+    <em${tone(a)}>${a.emoji}</em>${esc(a.name)}${PRO()?`<span class="bal">${balTxt(a)}</span>`:''}</button>`;
   $('#accts').innerHTML=list.map(a=>chip(a,a.id===S.draft.acct)).join('');
   if(k==='trf') $('#toAccts').innerHTML=list.filter(a=>a.id!==S.draft.acct)
     .map(a=>chip(a,a.id===S.draft.toAcct)).join('');
@@ -1166,6 +1184,7 @@ $('#accts').addEventListener('click',e=>{
   const b=e.target.closest('[data-a]'); if(!b) return;
   S.draft.acct=b.dataset.a;
   if(S.draft.toAcct===S.draft.acct) S.draft.toAcct=liveAccts().find(a=>a.id!==S.draft.acct)?.id||null;
+  syncDraftCcy();
   renderAccts(); renderQuick(); renderReadout();
 });
 $('#toAccts').addEventListener('click',e=>{
@@ -1379,8 +1398,9 @@ $('#mtdBox').addEventListener('click',()=>{
 
 /* ── details sheet ── */
 $('#noteBtn').addEventListener('click',()=>{
+  const fxA=S.draft.kind!=='trf'&&acctOf(S.draft.acct).ccy?acctOf(S.draft.acct):null;
   const ccOpts=S.settings.currencies.length?`
-    <div class="f"><label>العملة</label><select id="fCcy">
+    <div class="f"><label>العملة${fxA?` (حساب ${esc(fxA.name)} بالـ${esc(fxA.ccy)})`:''}</label><select id="fCcy" ${fxA?'disabled':''}>
       <option value="">${esc(S.settings.cur)} (الأساسية)</option>
       ${S.settings.currencies.map(c=>`<option value="${c.code}" ${S.draft.ccy===c.code?'selected':''}>${esc(c.code)} ${esc(c.symbol)} — سعر ${c.rate}</option>`).join('')}
     </select></div>`:'';
@@ -1401,7 +1421,7 @@ $('#noteBtn').addEventListener('click',()=>{
     const g=S.draft.kind!=='trf'&&!S.draft.catPicked&&guessCat(S.draft.note,catsOf(S.draft.kind));
     if(g){ if(!S.draft.catGuessed) S.draft.prevCat=S.draft.cat; S.draft.cat=g.id; S.draft.catGuessed=true; renderCats(); }
     S.draft.date=$('#fDate').value||today();
-    S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null;
+    if(!S.draft.ccyAuto){ S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null; }
     S.draft.unit=$('#fUnit')?$('#fUnit').value:'';
     S.draft.fee=$('#fFee')?Math.max(0,Number($('#fFee').value)||0):0;
     S.draft.credit=readCredit();
@@ -1480,6 +1500,8 @@ $('#nlBtn').addEventListener('click',()=>{
 
 $('#save').addEventListener('click',async()=>{
   const raw=Number(S.draft.amt); if(!(raw>0)) return;
+  if(S.draft.kind==='trf' && (acctOf(S.draft.acct).ccy||acctOf(S.draft.toAcct).ccy))
+    return fxSheet({from:S.draft.acct,to:S.draft.toAcct,amt:raw,date:S.draft.date,note:S.draft.note,fromDraft:true});
   const cc=S.draft.ccy?ccyOf(S.draft.ccy):null;
   const k=S.draft.kind;
   const t={kind:k,amount:cc?raw*cc.rate:raw,acct:S.draft.acct,note:S.draft.note,date:S.draft.date};
@@ -1579,7 +1601,7 @@ function renderLog(){
       const isTrf=t.kind==='trf';
       const icon=isTrf?'⇄':catOf(t.cat).emoji;
       const name=isTrf?`${acctOf(t.acct).name} ← ${acctOf(t.toAcct).name}`:catOf(t.cat).name;
-      const bits=[t.note, t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
+      const bits=[t.note, t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
         t.credit?`🧾 آجل${t.credit.vendor?' — '+t.credit.vendor:''}${creditLeft(t)>0?` · فاضل ${money0(creditLeft(t))}`:' · اتدفع'}`:'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
@@ -1667,21 +1689,25 @@ function creditSheet(id){
 function editTx(id){
   const t=S.tx.find(x=>x.id===id); if(!t) return;
   if(t.stay && S.stays.some(st=>st.id===t.stay)){ toast('الدفعة دي من حجز — عدّلها من الحجز'); return staySheet(t.stay); }
+  if(isFxTrf(t)) return fxSheet({txId:t.id});
+  /* on a euro / dollar account the amount is edited in that currency and the account stays one of the same currency */
+  const fxA=t.kind!=='trf'&&acctOf(t.acct).ccy?acctOf(t.acct):null;
   const isTrf=t.kind==='trf';
   /* always offer the tx's own kind and accounts, even if hidden (simple mode / closed account),
      otherwise saving silently converts a transfer to an expense or moves it to another account */
-  const kinds=kindList().includes(t.kind)?kindList():[...kindList(),t.kind];
+  const kinds=(kindList().includes(t.kind)?kindList():[...kindList(),t.kind]).filter(k=>!fxA||k!=='trf');
   const kOpts=kinds.map(k=>`<option value="${k}" ${t.kind===k?'selected':''}>${KINDS[k].label}</option>`).join('');
   sheet(`<h2>تعديل ${KINDS[t.kind].label}</h2>
-    ${t.ccy?`<p class="lede">مسجّل بـ ${money(t.raw)} ${esc(t.ccy)} بسعر ${t.rate}. التعديل بالعملة الأساسية.</p>`:''}
+    ${t.ccy&&!fxA?`<p class="lede">مسجّل بـ ${money(t.raw)} ${esc(t.ccy)} بسعر ${t.rate}. التعديل بالعملة الأساسية.</p>`:''}
+    ${fxA?`<p class="lede">من حساب بالـ${esc(fxA.ccy)} — بسعر ${t.rate||rateOf(fxA)} يعني ${money(t.amount)} ${esc(S.settings.cur)}.</p>`:''}
     <div class="f"><div class="row2">
-      <div><label>المبلغ (${esc(S.settings.cur)})</label><input id="eAmt" type="number" inputmode="decimal" step="0.01" value="${t.amount}"></div>
+      <div><label>المبلغ (${esc(fxA?symOf(fxA):S.settings.cur)})</label><input id="eAmt" type="number" inputmode="decimal" step="0.01" value="${fxA&&t.raw!=null?t.raw:t.amount}"></div>
       <div><label>التاريخ</label><input id="eDate" type="date" value="${t.date}"></div>
     </div></div>
     <div class="f"><label>النوع</label><select id="eKind">${kOpts}</select></div>
     <div class="f" id="eCatWrap"${isTrf?' hidden':''}><label>التصنيف</label><select id="eCat">
       ${catsOf(t.kind==='ref'?'exp':t.kind).map(c=>`<option value="${c.id}" ${c.id===t.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
-    <div class="f"><label>${isTrf?'من حساب':'الحساب'}</label><select id="eAcct">${acctOpts(t.acct)}</select></div>
+    <div class="f"><label>${isTrf?'من حساب':'الحساب'}</label><select id="eAcct">${fxA?S.accts.filter(a=>a.ccy===fxA.ccy&&(!a.archived||a.id===t.acct)).map(a=>`<option value="${a.id}" ${a.id===t.acct?'selected':''}>${a.emoji} ${esc(a.name)}</option>`).join(''):acctOpts(t.acct)}</select></div>
     <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">${acctOpts(t.toAcct)}</select></div>
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
     <div id="eUnitW">${unitField(t.unitId||'',t.kind,'eUnit')}</div>
@@ -1705,9 +1731,12 @@ function editTx(id){
     if(creditPaid(t)>0 && k!=='exp'){ toast('عليه دفعات آجل — امسحها الأول'); return; }
     /* validate before touching t, so a rejected edit doesn't leave memory out of sync with the DB */
     if(k==='trf' && $('#eTo').value===$('#eAcct').value){ toast('الحسابين نفس الحساب'); return; }
-    /* amount is edited in base currency — the original foreign amount no longer applies */
-    if(t.ccy && a!==t.amount){ delete t.ccy; delete t.raw; delete t.rate; }
-    Object.assign(t,{amount:a,date:$('#eDate').value||t.date,kind:k,acct:$('#eAcct').value,
+    /* amount is edited in base currency — the original foreign amount no longer applies;
+       on a foreign account it's edited in that currency and converted at the tx's own rate */
+    let amt=a;
+    if(fxA){ const r=t.rate||rateOf(fxA); t.ccy=fxA.ccy; t.raw=a; t.rate=r; amt=a*r; }
+    else if(t.ccy && a!==t.amount){ delete t.ccy; delete t.raw; delete t.rate; }
+    Object.assign(t,{amount:amt,date:$('#eDate').value||t.date,kind:k,acct:$('#eAcct').value,
       note:$('#eNote').value.trim()});
     const catBefore=t.cat;
     if(k==='trf'){ t.toAcct=$('#eTo').value; delete t.cat; }
@@ -2029,7 +2058,7 @@ function printReport(mk){
     ${ec.length?`<h2>${biz?'مصاريفك الشخصية':'المصاريف'} بالتصنيف</h2>${catTable(ec,E,true)}`:''}
     ${ic.length?`<h2>${biz?'دخلك الشخصي':'الدخل'} بالتصنيف</h2>${catTable(ic,I,false)}`:''}
     ${PRO()?`<h2>الحسابات (الرصيد دلوقتي)</h2><table><tr><th>الحساب</th><th class="n">الرصيد</th></tr>
-      ${liveAccts().map(a=>`<tr><td>${a.emoji} ${esc(a.name)}</td>${n(balance(a.id))}</tr>`).join('')}
+      ${liveAccts().map(a=>`<tr><td>${a.emoji} ${esc(a.name)}${a.ccy?` (${balTxt(a,1)} بسعر ${rateOf(a)})`:''}</td>${n(balanceBase(a.id))}</tr>`).join('')}
       <tr><th>الإجمالي</th><th class="n">${money(netWorth())}</th></tr></table>`:''}
     ${uRows.length||stays.length?`<h2>الإيجارات</h2>
       <div class="kpis"><div>المفروض يدخل<b>${money0(rm.earned)}</b></div><div>اللي وصلك<b>${money0(rm.collected)}</b></div><div>ليالي<b>${sm.nights}</b></div></div>
@@ -2165,7 +2194,7 @@ function expectedFor(acct){
 }
 function reconCard(mk){
   if(mk!==today().slice(0,7)) return '';
-  const a=S.accts.find(x=>x.type==='cash'&&!x.archived);
+  const a=S.accts.find(x=>x.type==='cash'&&!x.archived&&!x.ccy);
   if(!a) return '';
   const e=expectedFor(a.id), cur=esc(S.settings.cur);
   if(!e) return `<div class="card"><h3>عدّ الكاش اللي معاك<button id="reconBtn">ابدأ</button></h3>
@@ -2176,10 +2205,10 @@ function reconCard(mk){
     <div class="perf"></div><div class="kv big"><span>المفروض معاك</span><b>${money0(e.expected)} ${cur}</b></div></div>`;
 }
 function reconSheet(acctId){
-  const acct=acctId||(S.accts.find(x=>x.type==='cash'&&!x.archived)||liveAccts()[0]).id;
+  const acct=acctId||(S.accts.find(x=>x.type==='cash'&&!x.archived&&!x.ccy)||liveAccts()[0]).id;
   const a=acctOf(acct), e=expectedFor(acct), cur=esc(S.settings.cur);
-  const pick=liveAccts().length>1?`<div class="f"><label>الحساب</label><select id="rcAcct">
-    ${liveAccts().map(x=>`<option value="${x.id}" ${x.id===acct?'selected':''}>${x.emoji} ${esc(x.name)}</option>`).join('')}</select></div>`:'';
+  const pick=liveAccts().filter(x=>!x.ccy).length>1?`<div class="f"><label>الحساب</label><select id="rcAcct">
+    ${liveAccts().filter(x=>!x.ccy).map(x=>`<option value="${x.id}" ${x.id===acct?'selected':''}>${x.emoji} ${esc(x.name)}</option>`).join('')}</select></div>`:'';
   if(!e){
     sheet(`<h2>الرصيد اللي بدأت بيه — ${esc(a.name)}</h2>
       <p class="lede">عدّ اللي معاك دلوقتي في الحساب ده واكتبه. دي نقطة البداية للتسويات الجاية.</p>
@@ -2255,18 +2284,23 @@ function renderWal(){
 }
 function walAcc(){
   const cur=esc(S.settings.cur), w=netWorth();
-  const cash=liveAccts().filter(a=>a.type==='cash').reduce((s,a)=>s+balance(a.id),0);
-  const bank=w-cash;
+  const base=liveAccts().filter(a=>!a.ccy), fx=liveAccts().filter(a=>a.ccy);
+  const cash=base.filter(a=>a.type==='cash'&&!a.ccy).reduce((s,a)=>s+balance(a.id),0);
+  const bank=base.filter(a=>a.type!=='cash').reduce((s,a)=>s+balance(a.id),0), fxv=w-cash-bank;
+  const row=a=>{ const b=balance(a.id);
+    const g=a.ccy?fxGain(a,S.tx,rateOf(a)):null;
+    return `<button class="item" data-acc="${a.id}"><em${tone(a)}>${a.emoji}</em>
+        <span class="nm">${esc(a.name)}<small>${a.ccy?`≈ ${money0(balanceBase(a.id))} ${cur} · سعر ${rateOf(a)}${Math.abs(g.gain)>=1?` · <b style="color:${g.gain>=0?'var(--mint)':'var(--red)'}">${g.gain>=0?'زادت':'قلّت'} ${money0(Math.abs(g.gain))}</b>`:''}`:a.type==='cash'?'كاش':'بنك / كارت'}</small></span>
+        <span class="hint" style="color:${b>=0?'var(--chalk)':'var(--red)'};font-size:14px">${balTxt(a)}</span>
+        <span class="chev">‹</span></button>`; };
   return `<div class="worth"><div class="cap">إجمالي فلوسك</div>
       <div class="v">${money(w)}<span class="cur">${cur}</span></div>
-      <div class="sub">كاش <span class="num">${money0(cash)}</span> · بنك وكروت <span class="num">${money0(bank)}</span></div></div>
-    <div class="list" style="margin-top:14px">${liveAccts().map(a=>{
-      const b=balance(a.id);
-      return `<button class="item" data-acc="${a.id}"><em${tone(a)}>${a.emoji}</em>
-        <span class="nm">${esc(a.name)}<small>${a.type==='cash'?'كاش':'بنك / كارت'}</small></span>
-        <span class="hint" style="color:${b>=0?'var(--chalk)':'var(--red)'};font-size:14px">${money0(b)}</span>
-        <span class="chev">‹</span></button>`;}).join('<div class="perf"></div>')}</div>
+      <div class="sub">كاش <span class="num">${money0(cash)}</span> · بنك وكروت <span class="num">${money0(bank)}</span>${fx.length?` · عملات <span class="num">${money0(fxv)}</span>`:''}</div></div>
+    <div class="list" style="margin-top:14px">${base.map(row).join('<div class="perf"></div>')}</div>
+    ${fx.length?`<div class="sec"><h2>فلوس بعملات تانية</h2></div><div class="list">${fx.map(row).join('<div class="perf"></div>')}</div>
+      <div style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.7">القيمة بالجنيه بتتحسب بالسعر اللي في الإعدادات ← العملات. «زادت / قلّت» = الفرق بين قيمتها دلوقتي واللي دفعته فيها.</div>`:''}
     <button class="ghost" id="addAcc">+ حساب جديد</button>
+    <button class="ghost" id="addFx">💱 فلوس بعملة تانية (دولار، يورو…)</button>
     <button class="ghost" id="doRecon">عدّ فلوس حساب وطابقها</button>
     ${S.accts.some(a=>a.archived)?`<div class="sec"><h2>حسابات مقفولة</h2><div class="list">${
       S.accts.filter(a=>a.archived).map(a=>`<button class="item done" data-acc="${a.id}"><em>${a.emoji}</em>
@@ -2569,6 +2603,7 @@ function bindWal(){
   b.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>togglePay(x.dataset.pay));
   const g=id=>b.querySelector('#'+id);
   if(g('addAcc')) g('addAcc').onclick=()=>acctSheet(null);
+  if(g('addFx')) g('addFx').onclick=()=>acctSheet(null,{fx:true});
   if(g('doRecon')) g('doRecon').onclick=()=>reconSheet(null);
   if(g('addPlan')) g('addPlan').onclick=()=>planSheet(null);
   if(g('addDebt')) g('addDebt').onclick=()=>debtSheet(null);
@@ -2585,49 +2620,147 @@ function bindWal(){
   if(g('sNext')) g('sNext').onclick=()=>{S.stayMonth=nextMonth(S.stayMonth);renderWal();};
 }
 
-function acctSheet(id){
-  const a=id?S.accts.find(x=>x.id===id):{emoji:'💵',name:'',type:'cash',opening:0,archived:false};
-  const bal=id?balance(id):0;
+/* common currencies offered when making a foreign-currency account */
+const FX_PRESETS=[['USD','$','💵','دولار'],['EUR','€','💶','يورو'],['SAR','ر.س','🇸🇦','ريال سعودي'],['AED','د.إ','🇦🇪','درهم إماراتي'],
+  ['KWD','د.ك','🇰🇼','دينار كويتي'],['GBP','£','💷','جنيه إسترليني']];
+function acctSheet(id,opts){
+  const a=id?S.accts.find(x=>x.id===id):{emoji:opts&&opts.fx?'💵':'💵',name:'',type:'cash',opening:0,archived:false,ccy:opts&&opts.fx?'USD':''};
+  const used=id&&(S.tx.some(t=>t.acct===id||t.toAcct===id)||moneyMoves().some(f=>f.acct===id));
+  const cur=esc(S.settings.cur);
+  const codes=[...new Set([...S.settings.currencies.map(c=>c.code),...FX_PRESETS.map(p=>p[0])])];
+  const nameOf=c=>(FX_PRESETS.find(p=>p[0]===c)||[])[3]||c;
   const PRESETS=[['🏦','إنستاباي','bank'],['📱','فودافون كاش','bank'],['📱','اتصالات كاش','bank'],['📱','أورنج كاش','bank'],
     ['🏦','البنك الأهلي','bank'],['🏦','بنك مصر','bank'],['🏦','CIB','bank'],['💳','كارت ميزة','bank'],['💵','كاش البيت','cash']];
-  sheet(`<h2>${id?'تعديل الحساب':'حساب جديد'}</h2>
-    ${id?`<p class="lede">الرصيد الحالي: <b class="num">${money(bal)} ${esc(S.settings.cur)}</b></p>`
-      :`<div class="f"><label>اختيار سريع</label><div class="strip noscroll" style="padding:0;flex-wrap:wrap">${PRESETS.map(([e,n,t])=>
+  sheet(`<h2>${id?'تعديل الحساب':a.ccy?'فلوس بعملة تانية':'حساب جديد'}</h2>
+    ${id?`<p class="lede">الرصيد دلوقتي: <b class="num">${balTxt(a,1)}</b>${a.ccy?` ≈ <b class="num">${money0(balanceBase(id))} ${cur}</b>`:` ${cur}`}</p>`
+      :a.ccy?'':`<div class="f"><label>اختيار سريع</label><div class="strip noscroll" style="padding:0;flex-wrap:wrap">${PRESETS.map(([e,n,t])=>
         `<button type="button" class="c" data-pre="${e}|${n}|${t}"><em>${e}</em>${n}</button>`).join('')}</div></div>`}
+    <div class="f"><label>العملة</label><select id="aC" ${used?'disabled':''}>
+      <option value="">${cur} — جنيه</option>
+      ${codes.map(c=>`<option value="${c}" ${a.ccy===c?'selected':''}>${esc(c)} — ${esc(nameOf(c))}</option>`).join('')}</select>
+      ${used?'<div style="font-size:11.5px;color:var(--dim);margin-top:5px">عليه حركات، فعملته ما ينفعش تتغير.</div>':''}</div>
+    <div class="f" id="aRW"><label id="aRL"></label><input id="aR" type="number" inputmode="decimal" min="0" step="0.01">
+      <div style="font-size:11.5px;color:var(--dim);margin-top:5px">السعر ده بيتطبّق على كل الحسابات اللي بنفس العملة. حدّثه كل ما السعر يتغير.</div></div>
     <div class="f"><div class="row2">
       <div><label>رمز</label><input id="aE" maxlength="3" style="text-align:center;font-size:22px" value="${esc(a.emoji)}"></div>
-      <div><label>الرصيد اللي بدأت بيه</label><input id="aO" type="number" inputmode="decimal" step="0.01" value="${a.opening||0}"></div>
-    </div></div>
+      <div><label id="aOL">الرصيد اللي بدأت بيه</label><input id="aO" type="number" inputmode="decimal" step="0.01" value="${a.opening||0}"></div>
+    </div><div id="aOv" style="font-size:12.5px;color:var(--dim);margin-top:6px;min-height:16px"></div></div>
     <div class="f"><label>الاسم</label><input id="aN" maxlength="24" placeholder="مثلاً: حساب البنك الأهلي" value="${esc(a.name)}"></div>
     <div class="f"><label>النوع</label><select id="aT">
       <option value="cash" ${a.type==='cash'?'selected':''}>كاش (بتعدّه بإيدك)</option>
       <option value="bank" ${a.type==='bank'?'selected':''}>بنك أو كارت</option></select></div>
+    ${id&&a.ccy?`<div class="row2" style="margin-bottom:12px"><button type="button" class="ghost" id="aBuy" style="margin:0">💱 اشتريت / حطيت فيه</button>
+      <button type="button" class="ghost" id="aSell" style="margin:0">💱 غيّرت / خدت منه</button></div>`:''}
     ${id?`<label class="chk"><input type="checkbox" id="aA" ${a.archived?'checked':''}>
       <span>اقفل الحساب — يختفي من التسجيل بس حركاته تفضل محفوظة</span></label>`:''}
     <div class="acts">
       ${id&&liveAccts().length>1?'<button class="del" id="aD">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="aOk">حفظ</button></div>`);
+  const code=()=>$('#aC').value;
+  const preset=c=>FX_PRESETS.find(p=>p[0]===c);
+  let nameTouched=!!id, emojiTouched=!!id;
+  const upd=()=>{
+    const c=code(), cc=c?ccyOf(c):null, sym=c?(cc?cc.symbol:(preset(c)||[,c])[1]):S.settings.cur;
+    $('#aRW').hidden=!c;
+    $('#aRL').textContent=c?`سعر ${nameOf(c)} النهاردة: 1 ${sym} = كام ${S.settings.cur}`:'';
+    if(c && !$('#aR').value) $('#aR').value=cc?cc.rate:'';
+    $('#aOL').textContent=c?`المبلغ اللي معاك (بالـ${sym})`:'الرصيد اللي بدأت بيه';
+    const r=Number($('#aR').value)||0, o=Number($('#aO').value)||0;
+    $('#aOv').innerHTML=c&&r>0&&o?`≈ <span class="num">${money0(o*r)}</span> ${cur}`:'';
+    if(c&&!nameTouched) $('#aN').value=`${nameOf(c)} متحوّش`;
+    if(c&&!emojiTouched&&preset(c)) $('#aE').value=preset(c)[2];
+  };
+  $('#aC').onchange=()=>{ $('#aR').value=''; upd(); };
+  ['aR','aO'].forEach(k=>$('#'+k).addEventListener('input',upd));
+  $('#aN').addEventListener('input',()=>nameTouched=true); $('#aE').addEventListener('input',()=>emojiTouched=true);
+  upd();
   $('#sheet').querySelectorAll('[data-pre]').forEach(x=>x.onclick=()=>{
-    const [e,n,t]=x.dataset.pre.split('|'); $('#aE').value=e; $('#aN').value=n; $('#aT').value=t; });
+    const [e,n,t]=x.dataset.pre.split('|'); $('#aE').value=e; $('#aN').value=n; $('#aT').value=t; nameTouched=emojiTouched=true; });
+  if($('#aBuy')) $('#aBuy').onclick=()=>fxSheet({to:id});
+  if($('#aSell')) $('#aSell').onclick=()=>fxSheet({from:id});
   $('#aOk').onclick=async()=>{
     const n=$('#aN').value.trim(); if(!n){ $('#aN').focus(); return; }
     const arch=$('#aA')?$('#aA').checked:false;
     if(arch && liveAccts().length<=1 && !a.archived){ toast('لازم يفضل حساب واحد مفتوح'); return; }
+    const c=used?(a.ccy||''):code(), r=Number($('#aR').value);
+    if(c && !(r>0)){ $('#aR').focus(); return toast('اكتب سعر العملة بالجنيه'); }
+    /* the currency itself (code, symbol, today's rate) lives in the settings, shared by its accounts */
+    if(c){ const cc=ccyOf(c);
+      if(cc) cc.rate=r; else S.settings.currencies.push({code:c,symbol:(preset(c)||[,c])[1],rate:r});
+      await saveSettings(); }
     const v={emoji:$('#aE').value.trim()||'💵',name:n,type:$('#aT').value,
              opening:Number($('#aO').value)||0, archived:arch};
-    if(id){ Object.assign(a,v); await Store.put('acct',a); }
+    if(c){ v.ccy=c; if(!a.openRate||!used) v.openRate=r; }
+    if(id){ Object.assign(a,v); if(!c){ delete a.ccy; delete a.openRate; } await Store.put('acct',a); }
     else{ const na={id:uid(),...v,order:S.accts.length}; S.accts.push(na); await Store.put('acct',na); }
-    if(!liveAccts().some(x=>x.id===S.draft.acct)) S.draft.acct=liveAccts()[0].id;
-    closeSheet(); renderAccts(); renderWal(); renderRail(); toast('تم');
+    if(!liveAccts().some(x=>x.id===S.draft.acct)) S.draft.acct=defAcct();
+    closeSheet(); renderAccts(); renderWal(); renderRail(); renderSet(); toast('تم');
   };
   const d=$('#aD');
   if(d) d.onclick=async()=>{
     const used=S.tx.filter(t=>t.acct===id||t.toAcct===id).length+moneyMoves().filter(f=>f.acct===id).length;
     if(used){ toast(`فيه ${used} حركة على الحساب ده — اقفله بدل ما تحذفه`); return; }
     await Store.del('acct',id); S.accts=S.accts.filter(x=>x.id!==id);
-    if(S.draft.acct===id) S.draft.acct=liveAccts()[0].id;
+    if(S.draft.acct===id) S.draft.acct=defAcct();
     closeSheet(); renderAccts(); renderWal(); toast('اتحذف');
   };
+}
+/* buying, selling or moving money between currencies: what left one account and what arrived in the
+   other, each in its own currency. It's a transfer — never income or an expense. */
+const isFxTrf=t=>t.kind==='trf'&&(!!acctOf(t.acct).ccy||!!acctOf(t.toAcct).ccy);
+function fxSheet(o){
+  const t=o.txId?S.tx.find(x=>x.id===o.txId):null;
+  const base=liveAccts().find(a=>!a.ccy)||liveAccts()[0];
+  let from=t?t.acct:o.from||(o.to?defAcct():base.id), to=t?t.toAcct:o.to||(liveAccts().find(a=>a.ccy&&a.id!==from)||base).id;
+  const nat=(tt,side)=>{ const a=acctOf(side==='from'?tt.acct:tt.toAcct), r=side==='from'?[tt.raw,tt.ccy]:[tt.toRaw,tt.toCcy];
+    return a.ccy?(r[1]===a.ccy&&r[0]!=null?r[0]:tt.amount/rateOf(a)):tt.amount; };
+  const cur=esc(S.settings.cur);
+  sheet(`<h2>${t?'تعديل تحويل عملة':'تحويل عملة'}</h2>
+    <p class="lede">شراء دولار أو يورو، أو تغييرهم لجنيه. ده تحويل بين حساباتك — مش بيتحسب دخل ولا مصروف.</p>
+    <div class="f"><div class="row2">
+      <div><label>من حساب</label><select id="xF">${acctOpts(from,true)}</select></div>
+      <div><label id="xAL">دفعت</label><input id="xA" type="number" inputmode="decimal" min="0" step="0.01" value="${t?Math.round(nat(t,'from')*100)/100:o.amt||''}"></div></div></div>
+    <div class="f"><div class="row2">
+      <div><label>إلى حساب</label><select id="xT">${acctOpts(to,true)}</select></div>
+      <div><label id="xBL">خدت</label><input id="xB" type="number" inputmode="decimal" min="0" step="0.01" value="${t?Math.round(nat(t,'to')*100)/100:''}"></div></div></div>
+    <div id="xR" style="font-size:12.5px;color:var(--dim);margin:-4px 0 12px;min-height:18px"></div>
+    <div class="f"><div class="row2">
+      <div><label>اليوم</label><input id="xD" type="date" value="${t?t.date:o.date||today()}"></div>
+      <div><label>ملاحظة</label><input id="xN" maxlength="60" placeholder="مثلاً: من الصرافة" value="${esc(t?t.note||'':o.note||'')}"></div></div></div>
+    <div class="acts">${t?'<button class="del" id="xDel">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}<button class="go" id="xOk">سجّل</button></div>`);
+  let bTouched=!!t;
+  const A=()=>acctOf($('#xF').value), B=()=>acctOf($('#xT').value);
+  const upd=()=>{
+    $('#xAL').textContent=`دفعت (بالـ${symOf(A())})`; $('#xBL').textContent=`خدت (بالـ${symOf(B())})`;
+    const a=Number($('#xA').value)||0;
+    if(!bTouched) $('#xB').value=a?Math.round(a*rateOf(A())/rateOf(B())*100)/100:'';
+    const b=Number($('#xB').value)||0, fa=A(), fb=B();
+    /* the rate this exchange actually got, in the base currency per unit of the foreign side */
+    const fx=fb.ccy&&!fa.ccy?fb:fa.ccy&&!fb.ccy?fa:null;
+    $('#xR').innerHTML=a&&b&&fx?`يعني 1 ${esc(symOf(fx))} = <b class="num">${money(fx===fb?a/b:b/a)}</b> ${cur}${Math.abs((fx===fb?a/b:b/a)-rateOf(fx))>0.005?` · السعر المتسجل ${rateOf(fx)} — <button type="button" id="xUse" style="color:var(--brand);font-weight:600">خلّيه السعر الجديد</button>`:''}`:'';
+    if($('#xUse')) $('#xUse').onclick=async()=>{ ccyOf(fx.ccy).rate=Math.round((fx===fb?a/b:b/a)*100)/100; await saveSettings(); upd(); renderAccts(); toast('اتحدّث السعر'); };
+  };
+  $('#xA').addEventListener('input',upd); $('#xB').addEventListener('input',()=>{bTouched=true;upd();});
+  $('#xF').onchange=$('#xT').onchange=()=>{ if(!t) bTouched=false; upd(); };
+  upd();
+  $('#xOk').onclick=async()=>{
+    const fa=A(), fb=B(), a=Number($('#xA').value), b=Number($('#xB').value);
+    if(fa.id===fb.id) return toast('الحسابين نفس الحساب');
+    if(!(a>0)){ $('#xA').focus(); return; }
+    if(!(b>0)){ $('#xB').focus(); return; }
+    /* the base-currency value used in reports: the ج side when there is one */
+    const amount=!fa.ccy?a:!fb.ccy?b:a*rateOf(fa);
+    const v={kind:'trf',acct:fa.id,toAcct:fb.id,amount,date:$('#xD').value||today(),note:$('#xN').value.trim()};
+    if(fa.ccy){ v.ccy=fa.ccy; v.raw=a; }
+    if(fb.ccy){ v.toCcy=fb.ccy; v.toRaw=b; }
+    if(t){ ['ccy','raw','rate','toCcy','toRaw'].forEach(k=>delete t[k]); Object.assign(t,v); await Store.put('tx',t); sortTx(); }
+    else{ const n={id:uid(),at:Date.now(),...v}; S.tx.push(n); await Store.put('tx',n); sortTx(); }
+    if(o.fromDraft){ S.draft.amt=''; S.draft.note=''; }
+    closeSheet(); renderAccts(); renderWal(); renderLog(); renderRail(); renderReadout();
+    toast(`دفعت ${money(a)} ${esc(symOf(fa))} وخدت ${money(b)} ${esc(symOf(fb))}`);
+  };
+  if($('#xDel')) $('#xDel').onclick=async()=>{ if(!confirm('حذف التحويل ده؟')) return;
+    await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id); closeSheet(); renderAccts(); renderWal(); renderLog(); renderRail(); toast('اتحذف'); };
 }
 
 function planSheet(id){
@@ -2796,8 +2929,8 @@ const stayMoney=st=>({pays:(st.pays||[]).map(p=>({...p})),refunds:(st.refunds||[
 const stayChanged=()=>{ closeSheet(); renderWal(); renderRail(); renderAccts(); renderLog(); };
 function staySheet(id,preset){
   const rentCat=(catsOf('inc').find(c=>c.name.includes('إيجار'))||catsOf('inc')[0]).id;
-  const bankAcct=()=>(liveAccts().find(a=>a.type==='bank')||liveAccts()[0]).id;
-  const cashAcct=()=>(liveAccts().find(a=>a.type==='cash')||liveAccts()[0]).id;
+  const bankAcct=()=>(liveAccts().find(a=>a.type==='bank'&&!a.ccy)||liveAccts()[0]).id;
+  const cashAcct=()=>(liveAccts().find(a=>a.type==='cash'&&!a.ccy)||liveAccts()[0]).id;
   const last=S.stays.slice().sort((a,b)=>(b.at||0)-(a.at||0))[0];
   const st=id?S.stays.find(x=>x.id===id):{unitId:last?last.unitId||'':'',guest:'',phone:'',from:today(),nights:1,total:'',fee:0,
     channel:'booking',pays:[],cat:last?last.cat:rentCat,note:'',...(preset||{})};
@@ -3146,7 +3279,7 @@ function renderSet(){
     ${PRO()?`<div class="sec"><h2>الحسابات</h2>
       <div class="list">${liveAccts().map(a=>`<button class="item" data-sa="${a.id}"><em${tone(a)}>${a.emoji}</em>
         <span class="nm">${esc(a.name)}<small>${a.type==='cash'?'كاش':'بنك / كارت'}</small></span>
-        <span class="hint">${money0(balance(a.id))}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>
+        <span class="hint">${balTxt(a)}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>
       <button class="ghost" id="addAcc2">+ حساب جديد</button></div>`:''}
 
     <div class="sec"><h2>تصنيفات المصاريف<button id="fvBtn">أساسي/كماليات</button></h2>
@@ -3252,11 +3385,14 @@ function ccySheet(i){
     if(!code){ $('#yC').focus(); return; }
     if(!(r>0)){ $('#yR').focus(); return; }
     const v={code,symbol:sym,rate:r};
+    if(i>=0 && c.code!==code && S.accts.some(a=>a.ccy===c.code)) return toast(`فيه حساب بالـ${esc(c.code)} — الكود ما ينفعش يتغير`);
     if(i>=0) S.settings.currencies[i]=v; else S.settings.currencies.push(v);
-    await saveSettings(); closeSheet(); renderSet(); renderReadout(); toast('تم');
+    await saveSettings(); closeSheet(); renderSet(); renderReadout(); renderAccts(); toast('تم');
   };
   const d=$('#yD');
-  if(d) d.onclick=async()=>{ S.settings.currencies.splice(i,1);
+  if(d) d.onclick=async()=>{
+    if(S.accts.some(a=>a.ccy===c.code)) return toast(`فيه حساب بالـ${esc(c.code)} — اقفله الأول`);
+    S.settings.currencies.splice(i,1);
     if(S.draft.ccy&&!ccyOf(S.draft.ccy)) S.draft.ccy=null;
     await saveSettings(); closeSheet(); renderSet(); renderReadout(); toast('اتحذفت'); };
 }
@@ -3370,7 +3506,7 @@ function exportCsv(){
      t.toAcct?acctOf(t.toAcct).name:'',val(t),t.ccy||'',t.raw||'',t.note||'',isBiz(t)?'إيجارات':'شخصي',unitName(t.unitId),t.credit?(t.credit.vendor||'آجل'):'',t.credit?creditLeft(t):''].map(q).join(',')).join('\n');
   let csv=head+'\n'+body;
   csv+='\n\n'+['الحسابات','الاسم','النوع','الرصيد'].map(q).join(',')+'\n'+
-       S.accts.map(a=>['',a.name,a.type==='cash'?'كاش':'بنك',balance(a.id)].map(q).join(',')).join('\n');
+       S.accts.map(a=>['',a.name+(a.ccy?` (${a.ccy})`:''),a.type==='cash'?'كاش':'بنك',balance(a.id)+(a.ccy?` ${a.ccy} ≈ ${Math.round(balanceBase(a.id))}`:'')].map(q).join(',')).join('\n');
   if(S.debts.length)
     csv+='\n\n'+['السلف','الاسم','الاتجاه','المبلغ','التاريخ','موعد السداد','سُدّدت','ملاحظة','المسدّد','الطريقة','طرق السداد'].map(q).join(',')+'\n'+
       S.debts.map(d=>['',d.person,d.dir==='out'?'ليّ عنده':'عليّ له',d.amount,d.date,d.due||'',d.settledAt||'',d.note||'',debtPaid(d)||'',d.acct?acctOf(d.acct).name:'',
@@ -3447,8 +3583,8 @@ async function restoreFrom(text){
 
     let accts=d.acct||[];
     if(!accts.length) accts=DEF_ACCT.map((a,i)=>({id:uid(),...a,opening:0,order:i,archived:false}));
-    const aCash=accts.find(a=>a.type==='cash')||accts[0];
-    const aBank=accts.find(a=>a.type==='bank')||accts[accts.length-1];
+    const aCash=accts.find(a=>a.type==='cash'&&!a.ccy)||accts[0];
+    const aBank=accts.find(a=>a.type==='bank'&&!a.ccy)||accts[accts.length-1];
     for(const c of d.cats){ if(!c.kind)c.kind='exp'; if(c.kind==='exp'&&typeof c.fixed!=='boolean') c.fixed=false; }
     for(const t of d.tx){ if(!t.kind)t.kind='exp'; delete t._new; if(!t.acct) t.acct=t.method==='card'?aBank.id:aCash.id; }
     for(const r of (d.recur||[])){ if(!r.kind)r.kind='exp'; if(!r.acct) r.acct=r.method==='card'?aBank.id:aCash.id; }
