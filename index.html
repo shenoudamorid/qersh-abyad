@@ -1324,7 +1324,7 @@ function renderDue(){
   if(!items.length) return;
   const late=items.filter(i=>i.late).length;
   b.classList.toggle('late',late>0);
-  b.textContent=late?`⚠ ${late} متأخر${items.length>late?` · ${items.length-late} قريب`:''}`:`${items.length} مستحق الأسبوع ده`;
+  b.textContent=late?`⚠ ${late} متأخر${items.length>late?` · ${items.length-late} قريب`:''}`:`${items.length} مواعيد الأسبوع ده`;
 }
 $('#dueBtn').addEventListener('click',()=>{
   const items=dueNow(), cur=esc(S.settings.cur);
@@ -1339,7 +1339,7 @@ $('#dueBtn').addEventListener('click',()=>{
       :`${i.late?'وصل ':'واصل '}${dayLabel(i.date)}${i.late?' · <b style="color:var(--red)">لسه ما دفعش الباقي</b>':''}`)
     :i.type==='fee'?`المغادرة ${dayLabel(i.date)} · ${i.late?'<b style="color:var(--red)">لسه ما اتدفعتش</b>':'المنصة هتطالبك بيها'}`
     :`${dayLabel(i.date)}${i.late?' · <b style="color:var(--red)">فات موعده</b>':''}`;
-  sheet(`<h2>مستحق</h2>
+  sheet(`<h2>مواعيد دفع وتحصيل</h2>
     <p class="lede">اللي فات موعده واللي جاي خلال أسبوع.</p>
     <div class="list">${items.map((i,n)=>`<button class="item" data-due="${n}"><em>${icon(i)}</em>
       <span class="nm">${title(i)}<small>${sub(i)}</small></span>
@@ -1366,12 +1366,12 @@ $('#mtdBox').addEventListener('click',()=>{
     <div class="kv"><span>${hasBiz()?'دخلك الشخصي':'الدخل المسجّل'}</span><b style="color:var(--mint)">${money(I)} ${cur}</b></div>
     <div class="perf"></div>
     <div class="kv"><span>المصاريف</span><b>${money(E)} ${cur}</b></div>
-    ${res>0?`<div class="perf"></div><div class="kv"><span>محجوز لمصاريف قادمة</span><b>${money(res)} ${cur}</b></div>`:''}
+    ${res>0?`<div class="perf"></div><div class="kv"><span>متشال لمصاريف جاية</span><b>${money(res)} ${cur}</b></div>`:''}
     ${B>0?`<div class="perf"></div><div class="kv"><span>الميزانية</span><b>${money(B)} ${cur}</b></div>
       <div class="perf"></div><div class="kv big"><span>فاضل</span><b style="color:${B-E-res>=0?'var(--mint)':'var(--red)'}">${money(B-E-res)} ${cur}</b></div>
       <div class="perf"></div><div class="kv"><span>متاح لكل يوم فاضل</span><b>${money0((B-E-res)/(D-d+1))} ${cur}</b></div>`:''}
     <div class="perf"></div>
-    <div class="kv"><span>بالمعدل الحالي الشهر هيقفل على</span><b>${money0(pace)} ${cur}</b></div>
+    <div class="kv"><span>لو كمّلت كده، هتصرف في الشهر كله حوالي</span><b>${money0(pace)} ${cur}</b></div>
     ${hasBiz()?`<div class="perf"></div><div class="kv"><span>🏘 الإيجارات الشهر ده (اللي اتحصّل − مصاريفها)</span><b style="color:${biz>=0?'var(--mint)':'var(--red)'}">${biz>=0?'+':''}${money(biz)} ${cur}</b></div>
       <div style="font-size:12px;color:var(--dim);line-height:1.7;margin-top:6px">الأرقام اللي فوق شخصية بس — فلوس الإيجارات ومصاريف الوحدات مش داخلة في الميزانية.</div>`:''}
     <div class="acts"><button class="no" onclick="closeSheet()">تمام</button></div>`);
@@ -1631,7 +1631,7 @@ function creditFields(val,locked){
       onchange="document.getElementById('cF').hidden=!this.checked"><span>🧾 آجل — اشتريت أو صلّحت دلوقتي وهدفع بعدين</span></label>
     <div id="cF"${on?'':' hidden'}><div class="f"><div class="row2">
       <div><label>لمين (المحل / الصنايعي)</label><input id="cV" maxlength="40" placeholder="مثلاً: السباك" value="${esc(v.vendor||'')}"></div>
-      <div><label>هدفع يوم (اختياري)</label><input id="cD" type="date" value="${v.due||''}"></div></div></div>
+      <div><label>هدفع يوم (لو حابب)</label><input id="cD" type="date" value="${v.due||''}"></div></div></div>
       <div style="font-size:12px;color:var(--dim);line-height:1.7;margin:-4px 0 10px">بيتحسب مصروف النهاردة في التقارير والميزانية، والرصيد مش بيتحرك غير لما تدفع.</div></div>`;
 }
 const readCredit=()=>$('#cOn')&&$('#cOn').checked?{vendor:$('#cV').value.trim(),due:$('#cD').value||''}:null;
@@ -1805,7 +1805,7 @@ function renderRep(){
   }
   const net=I-E;
   const hero = I>0
-    ? `<div class="hero"><div class="cap">صافي الشهر</div>
+    ? `<div class="hero"><div class="cap">اللي فضل معاك الشهر ده</div>
         <div class="big ${net>=0?'pos':'neg'}">${net>=0?'+':''}${money(net)}<span class="cur">${cur}</span></div>
         <div class="legs"><span>دخل <b>${money0(I)}</b></span><span>مصاريف <b>${money0(E)}</b></span></div>
         <div class="cmp">${cmp}</div></div>`
@@ -1828,9 +1828,9 @@ function renderRep(){
     : B>0? `<div class="card"><h3>الميزانية<button id="bEdit">تعديل</button></h3>
       <div class="bar tall${E>B?' over':''}"><i style="width:${Math.min(E/B*100,100)}%"></i></div>
       <div class="foot">صرفت <b>${money0(E)}</b> من <b>${money0(B)}</b> ${cur} — ${E<=B?`فاضل <b class="pos">${money0(B-E)}</b>`:`زيادة <b class="neg">${money0(E-B)}</b>`}
-      ${res>0?`<br>محجوز <b>${money0(res)}</b> ${cur} لمصاريف قادمة`:''}
+      ${res>0?`<br>متشال <b>${money0(res)}</b> ${cur} لمصاريف جاية`:''}
       ${isThis?`<br>${dLeft} يوم فاضل · متاح <b>${money0((B-E-res)/dLeft)}</b> ${cur} في اليوم`:''}
-      <br>بالمعدل الحالي الشهر بيقفل على <b>${money0(E/dPast*D)}</b> ${cur}</div></div>`
+      <br>لو كمّلت كده، هتصرف في الشهر كله حوالي <b>${money0(E/dPast*D)}</b> ${cur}</div></div>`
     : `<div class="card"><h3>الميزانية</h3><div class="foot" style="margin:0">محددتش ميزانية شهرية.
         <button id="bEdit" style="color:var(--brand);font-weight:600">حدّدها</button> وهتشوف «متاح النهاردة كام».</div></div>`;
 
@@ -1849,13 +1849,13 @@ function renderRep(){
     let F=0,V=0;
     catsOf('exp').forEach(c=>{ const v=catNet(c.id); if(v>0){ if(c.fixed) F+=v; else V+=v; } });
     const tot=F+V;
-    if(tot>0) fv=`<div class="card"><h3>ملتزم مقابل اختياري<button id="fvEdit">تعديل</button></h3>
+    if(tot>0) fv=`<div class="card"><h3>أساسي وكماليات<button id="fvEdit">تعديل</button></h3>
       <div class="split"><i style="width:${F/tot*100}%;background:var(--iris)"></i><i style="width:${V/tot*100}%;background:var(--brand)"></i></div>
       <div class="splegend">
-        <span><i class="sw" style="background:var(--iris)"></i>ملتزم <b>${money0(F)}</b> <small style="color:var(--dim)">${(F/tot*100).toFixed(0)}%</small></span>
-        <span><i class="sw" style="background:var(--brand)"></i>اختياري <b>${money0(V)}</b> <small style="color:var(--dim)">${(V/tot*100).toFixed(0)}%</small></span>
+        <span><i class="sw" style="background:var(--iris)"></i>أساسي <b>${money0(F)}</b> <small style="color:var(--dim)">${(F/tot*100).toFixed(0)}%</small></span>
+        <span><i class="sw" style="background:var(--brand)"></i>كماليات <b>${money0(V)}</b> <small style="color:var(--dim)">${(V/tot*100).toFixed(0)}%</small></span>
       </div>
-      <div class="foot">لو ضغطت على الاختياري بالكامل تقدر توفّر لحد <b>${money0(V)}</b> ${cur} في الشهر.</div></div>`;
+      <div class="foot">لو استغنيت عن الكماليات تقدر توفّر لحد <b>${money0(V)}</b> ${cur} في الشهر.</div></div>`;
   }
 
   /* per account */
@@ -1935,20 +1935,20 @@ function repBiz(mk){
   const refunds=exp.filter(t=>t.refund).reduce((a,t)=>a+t.amount,0);
   if(!r.earned&&!r.collected&&!r.cost&&!sm.pending) return `<div class="empty"><div class="h">مفيش حركة إيجارات في ${monthLabel(mk)}</div>
     <div class="p">الحجوزات والعقود ومصاريف الوحدات بتظهر هنا لوحدها، بعيد عن فلوسك الشخصية.</div></div>`+yearCard('biz');
-  return `<div class="hero"><div class="cap">صافي الإيجارات الفعلي</div>
+  return `<div class="hero"><div class="cap">مكسب الإيجارات اللي في إيدك</div>
       <div class="big ${r.profit>=0?'pos':'neg'}">${r.profit>=0?'+':''}${money(r.profit)}<span class="cur">${cur}</span></div>
-      <div class="legs"><span>اتحصّل <b>${money0(r.collected)}</b></span><span>مصاريف <b>${money0(r.cost)}</b></span>${sm.nights?`<span>ليالي <b>${sm.nights}</b></span>`:''}</div>
-      <div class="cmp">على الليالي: مستحق <span class="num">${money0(r.earned)}</span> · مكسب <span class="num">${money0(r.profitEarned)}</span> ${cur}</div></div>
-    <div class="card"><h3>الفعلي مقابل على الليالي</h3>
-      <div class="kv"><span>مستحق الشهر ده${S.rents.length?' (ليالي + عقود)':' على الليالي'}</span><b>${money(r.earned)} ${cur}</b></div><div class="perf"></div>
-      <div class="kv"><span>اتحصّل فعلاً</span><b>${money(r.collected)} ${cur}</b></div><div class="perf"></div>
-      <div class="kv"><span>المكسب على الليالي</span>${pf(r.profitEarned)}</div><div class="perf"></div>
-      <div class="kv"><span>المكسب الفعلي</span>${pf(r.profit)}</div>
+      <div class="legs"><span>وصلك <b>${money0(r.collected)}</b></span><span>مصاريف <b>${money0(r.cost)}</b></span>${sm.nights?`<span>ليالي <b>${sm.nights}</b></span>`:''}</div>
+      <div class="cmp">المفروض يدخل <span class="num">${money0(r.earned)}</span> · المكسب المفروض <span class="num">${money0(r.profitEarned)}</span> ${cur}</div></div>
+    <div class="card"><h3>اللي وصلك مقابل المفروض يدخل</h3>
+      <div class="kv"><span>المفروض يدخل الشهر ده${S.rents.length?' (الليالي + الإيجار الشهري)':' (الليالي اللي اتسكنت)'}</span><b>${money(r.earned)} ${cur}</b></div><div class="perf"></div>
+      <div class="kv"><span>اللي وصلك فعلاً</span><b>${money(r.collected)} ${cur}</b></div><div class="perf"></div>
+      <div class="kv"><span>المكسب المفروض</span>${pf(r.profitEarned)}</div><div class="perf"></div>
+      <div class="kv"><span>المكسب اللي في إيدك</span>${pf(r.profit)}</div>
       <div class="foot">ليه الرقمين مختلفين؟
         ${ahead>0?`<br>• عرابين لحجوزات جاية بعد الشهر: <b>${money0(ahead)}</b>`:''}
         ${unpaid>0?`<br>• ليالي الشهر ده لسه فلوسها ما وصلتش: <b>${money0(unpaid)}</b>`:''}
         ${rentLate>0?`<br>• إيجار شهري لسه ما اتحصّلش: <b>${money0(rentLate)}</b>`:''}
-        ${r.fees>0?`<br>• عمولات اتدفعت للمنصات الشهر ده: <b>${money0(r.fees)}</b> (على الليالي العمولة بتتخصم من كل حجز)`:''}
+        ${r.fees>0?`<br>• عمولات اتدفعت للمنصات الشهر ده: <b>${money0(r.fees)}</b> (في «المفروض» العمولة متخصومة من كل حجز)`:''}
         ${refunds>0?`<br>• مبالغ رجعت لضيوف لغوا: <b>${money0(refunds)}</b>`:''}
         ${!ahead&&!unpaid&&!rentLate&&!r.fees&&!refunds?'<br>• حجوزات بتعدّي آخر الشهر بتتقسم بعدد لياليها، والفلوس بتتحسب يوم ما وصلت.':''}</div></div>
     ${unitCards(mk)}
@@ -1982,11 +1982,11 @@ function goalSheet(id){
       <div><label>رمز</label><input id="gE" maxlength="3" style="text-align:center;font-size:20px" value="${esc(g.emoji||'🎯')}"></div></div></div>
     <div class="f"><div class="row2">
       <div><label>المبلغ المطلوب</label><input id="gT" type="number" inputmode="decimal" min="0" step="1" value="${g.target}"></div>
-      <div><label>عايزه قبل شهر (اختياري)</label><input id="gB" type="month" value="${g.by||''}"></div></div></div>
+      <div><label>عايزه قبل شهر (لو حابب)</label><input id="gB" type="month" value="${g.by||''}"></div></div></div>
     ${id?`<div class="card" style="margin:0 0 13px;box-shadow:none"><h3>اللي حوّشته <span style="font-size:12.5px;font-weight:500;color:var(--dim)">${money0(goalSaved(g))} ${cur}</span></h3>
       ${(g.adds||[]).slice().reverse().map(a=>`<div class="kv" style="padding:5px 0"><span>${dayLabel(a.date)}</span>
         <span style="display:flex;gap:10px;align-items:center"><b>${money(a.amount)}</b><button type="button" data-rmadd="${a.id}" style="color:var(--red);font-size:17px">×</button></span></div>`).join('')||'<div style="font-size:13px;color:var(--dim)">لسه.</div>'}</div>`:''}
-    <div class="f"><label>${id?'حوّشت النهاردة':'حوّشت لحد دلوقتي (اختياري)'}</label><input id="gA" type="number" inputmode="decimal" min="0" step="1" placeholder="0"></div>
+    <div class="f"><label>${id?'حوّشت النهاردة':'حوّشت لحد دلوقتي (لو حابب)'}</label><input id="gA" type="number" inputmode="decimal" min="0" step="1" placeholder="0"></div>
     <div class="acts">${id?'<button class="del" id="gDel">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="gOk">حفظ</button></div>`);
   $('#sheet').querySelectorAll('[data-rmadd]').forEach(x=>x.onclick=async()=>{
@@ -2023,7 +2023,7 @@ function printReport(mk){
     <div class="meta">قرش أبيض · اتعمل ${dayLabel(today())} · المبالغ بالـ ${cur}</div>
     ${biz?`<h2>الخلاصة</h2><table><tr><th></th><th class="n">الدخل</th><th class="n">المصاريف</th><th class="n">الصافي</th></tr>
       <tr><td>شخصي</td>${n(I)}${n(E)}<td class="n">${sg(I-E)}</td></tr>
-      <tr><td>الإيجارات (فعلي)</td>${n(rm.collected)}${n(rm.cost)}<td class="n">${sg(rm.profit)}</td></tr>
+      <tr><td>الإيجارات (اللي وصلك)</td>${n(rm.collected)}${n(rm.cost)}<td class="n">${sg(rm.profit)}</td></tr>
       <tr><th>الكل</th><th class="n">${money(I+rm.collected)}</th><th class="n">${money(E+rm.cost)}</th><th class="n">${sg(I-E+rm.profit)}</th></tr></table>`
     :`<div class="kpis"><div>الدخل<b>${money(I)}</b></div><div>المصاريف<b>${money(E)}</b></div><div>الصافي<b>${I-E>=0?'+':''}${money(I-E)}</b></div></div>`}
     ${ec.length?`<h2>${biz?'مصاريفك الشخصية':'المصاريف'} بالتصنيف</h2>${catTable(ec,E,true)}`:''}
@@ -2032,10 +2032,10 @@ function printReport(mk){
       ${liveAccts().map(a=>`<tr><td>${a.emoji} ${esc(a.name)}</td>${n(balance(a.id))}</tr>`).join('')}
       <tr><th>الإجمالي</th><th class="n">${money(netWorth())}</th></tr></table>`:''}
     ${uRows.length||stays.length?`<h2>الإيجارات</h2>
-      <div class="kpis"><div>مستحق على الليالي<b>${money0(rm.earned)}</b></div><div>اتحصّل فعلاً<b>${money0(rm.collected)}</b></div><div>ليالي<b>${sm.nights}</b></div></div>
-      ${uRows.length?`<table><tr><th>الوحدة</th><th class="n">مستحق</th><th class="n">اتحصّل</th><th class="n">المصاريف</th><th class="n">المكسب على الليالي</th><th class="n">المكسب الفعلي</th></tr>
+      <div class="kpis"><div>المفروض يدخل<b>${money0(rm.earned)}</b></div><div>اللي وصلك<b>${money0(rm.collected)}</b></div><div>ليالي<b>${sm.nights}</b></div></div>
+      ${uRows.length?`<table><tr><th>الوحدة</th><th class="n">المفروض يدخل</th><th class="n">وصلك</th><th class="n">المصاريف</th><th class="n">المكسب المفروض</th><th class="n">المكسب في إيدك</th></tr>
         ${uRows.map(r=>`<tr><td>${r.u?esc(unitName(r.u)):'من غير وحدة'}</td>${n(r.earned)}${n(r.collected)}${n(r.cost)}${n(r.profitEarned)}${n(r.profit)}</tr>`).join('')}</table>
-        <div class="meta">«على الليالي» = اللي الشهر يستاهله حتى لو الفلوس ما وصلتش (العمولة متخصومة من كل حجز). «الفعلي» = الفلوس اللي دخلت وخرجت في الشهر.</div>`:''}
+        <div class="meta">«المفروض» = قيمة الليالي اللي اتسكنت والإيجار الشهري، حتى لو الفلوس لسه ما وصلتش (العمولة متخصومة). «في إيدك» = الفلوس اللي دخلت وخرجت فعلاً في الشهر.</div>`:''}
       ${stays.length?`<table><tr><th>الضيف</th><th>الوحدة</th><th>التاريخ</th><th>المصدر</th><th class="n">الصافي</th><th class="n">الباقي</th></tr>
       ${stays.map(st=>`<tr><td>${esc(st.guest||'')}${st.cancelled?' (ملغي)':''}</td><td>${esc(unitName(st.unitId))}</td><td>${stayDates(st)} (${nightsLbl(st.nights)})</td><td>${CH[st.channel].name}</td>${n(st.cancelled?stayEarnedIn(st,mk):stayNet(st))}${n(stayLeft(st))}</tr>`).join('')}</table>`:''}`:''}
     ${S.goals.length?`<h2>أهداف الادخار</h2><table><tr><th>الهدف</th><th class="n">حوّشت</th><th class="n">المطلوب</th><th class="n">%</th></tr>
@@ -2135,8 +2135,8 @@ function budgetSheet(){
   };
 }
 function fixedSheet(){
-  sheet(`<h2>ملتزم مقابل اختياري</h2>
-    <p class="lede">علّم التصنيفات اللي مش بتقدر تقلّلها (إيجار، فواتير، أقساط). الباقي بيتحسب اختياري.</p>
+  sheet(`<h2>أساسي وكماليات</h2>
+    <p class="lede">علّم التصنيفات اللي مش بتقدر تقلّلها (إيجار، فواتير، أقساط). الباقي بيتحسب كماليات.</p>
     <div class="list">${catsOf('exp').map(c=>`
       <label class="item" style="cursor:pointer"><em${tone(c)}>${c.emoji}</em><span class="nm">${esc(c.name)}</span>
         <input type="checkbox" data-fx="${c.id}" ${c.fixed?'checked':''}
@@ -2168,10 +2168,10 @@ function reconCard(mk){
   const a=S.accts.find(x=>x.type==='cash'&&!x.archived);
   if(!a) return '';
   const e=expectedFor(a.id), cur=esc(S.settings.cur);
-  if(!e) return `<div class="card"><h3>تسوية الكاش<button id="reconBtn">ابدأ</button></h3>
-    <div class="foot" style="margin:0">اكتب الكاش اللي معاك فعلاً مرة واحدة، وبعدها أي تسوية هتوريك الفرق بين المتوقع والحقيقي — وهو اللي نسيت تسجّله.</div></div>`;
-  return `<div class="card"><h3>تسوية ${esc(a.name)}<button id="reconBtn">تسوية جديدة</button></h3>
-    <div class="kv"><span>آخر تسوية (${dayLabel(e.from)})</span><b>${money0(e.base)} ${cur}</b></div>
+  if(!e) return `<div class="card"><h3>عدّ الكاش اللي معاك<button id="reconBtn">ابدأ</button></h3>
+    <div class="foot" style="margin:0">اكتب الكاش اللي معاك فعلاً مرة واحدة، وكل مرة تعدّ بعد كده التطبيق هيقولك الفرق بين المفروض يكون معاك واللي معاك فعلاً — والفرق ده هو اللي نسيت تسجّله.</div></div>`;
+  return `<div class="card"><h3>عدّ فلوس ${esc(a.name)}<button id="reconBtn">عدّيت تاني</button></h3>
+    <div class="kv"><span>آخر مرة عدّيت (${dayLabel(e.from)})</span><b>${money0(e.base)} ${cur}</b></div>
     <div class="perf"></div><div class="kv"><span>الحركة بعدها</span><b style="color:${e.delta>=0?'var(--mint)':'var(--chalk)'}">${e.delta>=0?'+':''}${money0(e.delta)}</b></div>
     <div class="perf"></div><div class="kv big"><span>المفروض معاك</span><b>${money0(e.expected)} ${cur}</b></div></div>`;
 }
@@ -2181,7 +2181,7 @@ function reconSheet(acctId){
   const pick=liveAccts().length>1?`<div class="f"><label>الحساب</label><select id="rcAcct">
     ${liveAccts().map(x=>`<option value="${x.id}" ${x.id===acct?'selected':''}>${x.emoji} ${esc(x.name)}</option>`).join('')}</select></div>`:'';
   if(!e){
-    sheet(`<h2>رصيد افتتاحي — ${esc(a.name)}</h2>
+    sheet(`<h2>الرصيد اللي بدأت بيه — ${esc(a.name)}</h2>
       <p class="lede">عدّ اللي معاك دلوقتي في الحساب ده واكتبه. دي نقطة البداية للتسويات الجاية.</p>
       ${pick}
       <div class="f"><label>الرصيد الحالي (${cur})</label>
@@ -2198,7 +2198,7 @@ function reconSheet(acctId){
     };
     return;
   }
-  sheet(`<h2>تسوية — ${esc(a.name)}</h2>
+  sheet(`<h2>عدّ الفلوس — ${esc(a.name)}</h2>
     <p class="lede">عدّ اللي معاك فعلاً. الفرق هو اللي نسيت تسجّله.</p>
     ${pick}
     <div class="kv"><span>المفروض معاك</span><b>${money0(e.expected)} ${cur}</b></div>
@@ -2206,7 +2206,7 @@ function reconSheet(acctId){
       <input id="rcAmt" type="number" inputmode="decimal" step="1"></div>
     <div id="rcOut"></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
-      <button class="go" id="rcOk">حفظ التسوية</button></div>`);
+      <button class="go" id="rcOk">حفظ العدّ</button></div>`);
   if($('#rcAcct')) $('#rcAcct').onchange=ev=>{ closeSheet(); setTimeout(()=>reconSheet(ev.target.value),120); };
   const upd=()=>{
     const v=Number($('#rcAmt').value), out=$('#rcOut');
@@ -2229,7 +2229,7 @@ function reconSheet(acctId){
       let c=S.cats.find(x=>x.kind===kind && x.name===nm);
       if(!c){ c={id:uid(),emoji:'❓',name:nm,kind,order:S.cats.length,budget:0,fixed:false};
         S.cats.push(c); await Store.put('cats',c); }
-      const t={id:uid(),kind,amount:Math.abs(d),cat:c.id,acct,note:'فرق تسوية',date:today(),at:Date.now()};
+      const t={id:uid(),kind,amount:Math.abs(d),cat:c.id,acct,note:'فرق العدّ',date:today(),at:Date.now()};
       await Store.put('tx',t); S.tx.push(t); sortTx();
     }
     const r={id:uid(),date:today(),at:Date.now(),acct,cash:v,expected:e.expected,diff:d};
@@ -2267,7 +2267,7 @@ function walAcc(){
         <span class="hint" style="color:${b>=0?'var(--chalk)':'var(--red)'};font-size:14px">${money0(b)}</span>
         <span class="chev">‹</span></button>`;}).join('<div class="perf"></div>')}</div>
     <button class="ghost" id="addAcc">+ حساب جديد</button>
-    <button class="ghost" id="doRecon">تسوية رصيد حساب</button>
+    <button class="ghost" id="doRecon">عدّ فلوس حساب وطابقها</button>
     ${S.accts.some(a=>a.archived)?`<div class="sec"><h2>حسابات مقفولة</h2><div class="list">${
       S.accts.filter(a=>a.archived).map(a=>`<button class="item done" data-acc="${a.id}"><em>${a.emoji}</em>
         <span class="nm">${esc(a.name)}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div></div>`:''}
@@ -2426,11 +2426,11 @@ function unitCards(mk){
   return `<div class="card"><h3>مكسب كل وحدة</h3>${rows.map((r,i)=>`${i?'<div class="perf" style="margin:8px 0"></div>':''}
     <div class="kv" style="padding:4px 0"><span style="display:flex;align-items:center;gap:7px"><i class="sw" style="background:${r.u?unitTone(r.u):'var(--dim)'}"></i><b style="font-family:inherit">${r.u?esc(unitName(r.u)):'من غير وحدة'}</b></span>
       <span style="font-size:12px;color:var(--dim)">${r.nights?nightsLbl(r.nights):''}</span></div>
-    ${line(`مستحق${r.nights?' على الليالي':''}${r.rentDue?(r.nights?' + العقد':' من العقد'):''}`,money0(r.earned))}
-    ${line('اتحصّل فعلاً الشهر ده',money0(r.collected))}
+    ${line(`المفروض يدخل${r.nights?' من الليالي':''}${r.rentDue?(r.nights?' والإيجار الشهري':' من الإيجار الشهري'):''}`,money0(r.earned))}
+    ${line('اللي وصلك فعلاً الشهر ده',money0(r.collected))}
     ${line('مصاريف الوحدة'+(r.fees?` (منها عمولات ${money0(r.fees)})`:''),r.cost?"−"+money0(r.cost):"0")}
-    <div class="kv" style="padding:4px 0 0"><span style="font-size:12.5px">المكسب على الليالي ${pf(r.profitEarned)}</span><span style="font-size:12.5px">الفعلي ${pf(r.profit)} <small style="color:var(--dim)">${cur}</small></span></div>`).join('')}
-    <div class="foot">«على الليالي» = اللي الشهر ده يستاهله حتى لو الفلوس لسه ما وصلتش. «الفعلي» = الفلوس اللي دخلت وخرجت الشهر ده (عربون لحجز جاي بيتحسب في شهر ما وصل).
+    <div class="kv" style="padding:4px 0 0"><span style="font-size:12.5px">المكسب المفروض ${pf(r.profitEarned)}</span><span style="font-size:12.5px">في إيدك ${pf(r.profit)} <small style="color:var(--dim)">${cur}</small></span></div>`).join('')}
+    <div class="foot">«المفروض» = قيمة الليالي اللي اتسكنت الشهر ده، حتى لو الفلوس لسه ما وصلتش. «في إيدك» = الفلوس اللي دخلت وخرجت فعلاً الشهر ده (العربون بيتحسب في الشهر اللي وصلك فيه).
       علشان مصروف يتخصم من وحدة: في تفاصيل المصروف (✎) اختار «تابع لوحدة».</div></div>`;
 }
 /* units: rename once and every booking, contract and expense follows; archive one you no longer rent */
@@ -2438,7 +2438,36 @@ function unitsCard(){
   const us=allUnits(); if(!us.length) return '';
   return `<div class="card"><h3>الوحدات <button id="addUnit">+ وحدة</button></h3>
     <div style="display:flex;flex-wrap:wrap;gap:8px">${us.map(u=>`<button class="chipU" data-unit="${u.id}" style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--dim) 35%,transparent);font-size:13px;${u.archived?'opacity:.5':''}">
-      <i class="sw" style="background:${unitTone(u.id)}"></i>${esc(u.name)}${u.archived?' <small>(مقفولة)</small>':''}</button>`).join('')}</div></div>`;
+      <i class="sw" style="background:${unitTone(u.id)}"></i>${esc(u.name)}${u.archived?' <small>(مقفولة)</small>':''}</button>`).join('')}</div>
+    <div class="foot">دوس على وحدة علشان تغيّر اسمها، أو تربط بيها مصاريف قديمة كانت متسجلة شخصي.</div></div>`;
+}
+/* pick old personal expenses that were really for this unit — they move out of your personal
+   spending and into the unit's costs. The ones whose note names the unit come first. */
+function linkSheet(id){
+  const u=unitOf(id); if(!u) return;
+  const cur=esc(S.settings.cur), key=norm(u.name);
+  const words=key.split(/\s+/).filter(w=>w.length>2);
+  const hit=t=>{ const n=norm(t.note||''); return !!n && (n.includes(key)||words.some(w=>n.includes(w))); };
+  const list=S.tx.filter(t=>(t.kind==='exp'||t.kind==='ref') && !isBiz(t))
+    .sort((a,b)=>(hit(b)-hit(a))||b.date.localeCompare(a.date)).slice(0,150);
+  sheet(`<h2>اربط مصاريف بوحدة «${esc(u.name)}»</h2>
+    <p class="lede">علّم المصاريف اللي كانت للوحدة دي (نظافة، صيانة، كهربا…). هتتخصم من مكسبها وتخرج من مصاريفك الشخصية.</p>
+    ${list.length?`<div class="list">${list.map(t=>{const c=catOf(t.cat);return `<label class="item" style="cursor:pointer">
+      <input type="checkbox" data-lk="${t.id}" ${hit(t)?'checked':''} style="width:19px;height:19px;flex:none;accent-color:var(--brand)">
+      <span class="nm">${c.emoji} ${esc(t.note||c.name)}<small>${dayLabel(t.date)} · ${esc(c.name)}${hit(t)?' · <b style="color:var(--brand)">مقترح</b>':''}</small></span>
+      <span class="hint">${t.kind==='ref'?'+':''}${money0(t.amount)}</span></label>`;}).join('<div class="perf"></div>')}</div>`
+      :'<div class="empty" style="padding:20px"><div class="p">مفيش مصاريف شخصية تربطها.</div></div>'}
+    <div id="lkSum" style="font-size:12.5px;color:var(--dim);margin:10px 0"></div>
+    <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="lkOk">اربط</button></div>`);
+  const picked=()=>[...$('#sheet').querySelectorAll('[data-lk]:checked')].map(x=>S.tx.find(t=>t.id===x.dataset.lk));
+  const upd=()=>{ const p=picked(); $('#lkSum').innerHTML=p.length?`${p.length} مصروف · <span class="num">${money0(p.reduce((a,t)=>a+(t.kind==='ref'?-t.amount:t.amount),0))}</span> ${cur}`:'ما اخترتش حاجة'; };
+  $('#sheet').addEventListener('change',upd); upd();
+  $('#lkOk').onclick=async()=>{
+    const p=picked(); if(!p.length) return closeSheet();
+    for(const t of p){ t.unitId=id; delete t.unit; }
+    await Store.batch(p.map(t=>['put','tx',t]));
+    closeSheet(); renderWal(); renderLog(); renderRail(); toast(`اتربط ${p.length} مصروف بوحدة «${esc(u.name)}»`);
+  };
 }
 function unitSheet(id){
   const u=id?unitOf(id):{name:''};
@@ -2446,6 +2475,7 @@ function unitSheet(id){
   sheet(`<h2>${id?'الوحدة':'وحدة جديدة'}</h2>
     <div class="f"><label>الاسم</label><input id="uN" maxlength="30" placeholder="شقة البالمز" value="${esc(u.name)}"></div>
     ${id?`<p style="font-size:12.5px;color:var(--dim);line-height:1.7">تغيير الاسم بيتطبّق على كل الحجوزات والعقود والمصاريف بتاعتها.${used?' الوحدة اللي عليها حركات بتتقفل مش بتتحذف.':''}</p>`:''}
+    ${id?`<button type="button" class="ghost" id="uLink" style="margin-top:0">🔗 اربط مصاريف قديمة بالوحدة دي</button>`:''}
     <div class="acts">${id?`<button class="del" id="uDel">${used?(u.archived?'افتحها تاني':'اقفلها'):'حذف'}</button>`:'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="uOk">حفظ</button></div>`);
   $('#uOk').onclick=async()=>{
@@ -2454,6 +2484,7 @@ function unitSheet(id){
     if(id) u.name=n; else allUnits().push({id:uid(),name:n});
     await saveSettings(); closeSheet(); renderWal(); renderLog(); toast('تم');
   };
+  if($('#uLink')) $('#uLink').onclick=()=>linkSheet(id);
   if($('#uDel')) $('#uDel').onclick=async()=>{
     if(used) u.archived=!u.archived;
     else{ if(!confirm('حذف الوحدة؟')) return; S.settings.units=allUnits().filter(x=>x.id!==id); }
@@ -2478,10 +2509,10 @@ function walRent(){
   const stays=S.stays.length?`
     <div class="mnav"><button id="sNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
       <span class="lbl">${monthLabel(mk)}</span><button id="sPrev" aria-label="قبله">›</button></div>
-    <div class="hero"><div class="cap">صافي الحجوزات على الليالي</div>
+    <div class="hero"><div class="cap">دخل الحجوزات الشهر ده</div>
       <div class="big">${money(sm.net)}<span class="cur">${cur}</span></div>
-      <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>إشغال <b>${occ}%</b></span><span>حجوزات <b>${sm.count}</b></span></div>
-      <div class="cmp">اتحصّل فعلاً الشهر ده <span class="num">${money0(rm.collected)}</span> ${cur}${sm.fees>0?` · عمولات <span class="num">${money0(sm.fees)}</span>`:''}${sm.kept>0?` · من إلغاءات <span class="num">${money0(sm.kept)}</span>`:''}</div></div>
+      <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>متأجرة <b>${occ}%</b> من الشهر</span><span>حجوزات <b>${sm.count}</b></span></div>
+      <div class="cmp">وصلك فعلاً الشهر ده <span class="num">${money0(rm.collected)}</span> ${cur}${sm.fees>0?` · عمولات <span class="num">${money0(sm.fees)}</span>`:''}${sm.kept>0?` · من إلغاءات <span class="num">${money0(sm.kept)}</span>`:''}</div></div>
     ${sm.pending>0?`<div class="banner" style="margin-top:12px">فاضلك تحصّل <b class="num">${money0(sm.pending)} ${cur}</b> من ${sm.pendingN===1?'حجز':sm.pendingN+' حجوزات'} — دوس على الحجز وسجّل الدفعة لما توصل.</div>`:''}
     ${feeOwed>0?`<div class="banner" style="margin-top:12px">عليك عمولات للمنصات <b class="num">${money0(feeOwed)} ${cur}</b> عن حجوزات الضيف دفع فيها في الشقة — لما تدفعها علّمها في الحجز.</div>`:''}
     ${stayCalendar(mk)}
@@ -2565,7 +2596,7 @@ function acctSheet(id){
         `<button type="button" class="c" data-pre="${e}|${n}|${t}"><em>${e}</em>${n}</button>`).join('')}</div></div>`}
     <div class="f"><div class="row2">
       <div><label>رمز</label><input id="aE" maxlength="3" style="text-align:center;font-size:22px" value="${esc(a.emoji)}"></div>
-      <div><label>الرصيد الافتتاحي</label><input id="aO" type="number" inputmode="decimal" step="0.01" value="${a.opening||0}"></div>
+      <div><label>الرصيد اللي بدأت بيه</label><input id="aO" type="number" inputmode="decimal" step="0.01" value="${a.opening||0}"></div>
     </div></div>
     <div class="f"><label>الاسم</label><input id="aN" maxlength="24" placeholder="مثلاً: حساب البنك الأهلي" value="${esc(a.name)}"></div>
     <div class="f"><label>النوع</label><select id="aT">
@@ -2654,7 +2685,7 @@ function debtSheet(id){
     </div></div>
     <div class="f"><label id="dVl">${d.dir==='in'?'استلمتها':'اديتها'} عن طريق</label><select id="dV">
       ${acctOpts(d.acct)}<option value="" ${d.acct?'':'selected'}>بدون حساب — مش بيأثر على الرصيد</option></select></div>
-    <div class="f"><label>موعد السداد (اختياري)</label><input id="dU" type="date" value="${d.due||''}"></div>
+    <div class="f"><label>موعد السداد (لو حابب)</label><input id="dU" type="date" value="${d.due||''}"></div>
     <div class="f"><label>ملاحظة</label><input id="dN" maxlength="60" value="${esc(d.note||'')}"></div>
     ${id&&(d.pays||[]).length?`<div class="striplbl" style="padding:4px 0 6px">دفعات (${money0(debtPaid(d))} من ${money0(d.amount)})</div>
       ${d.pays.map((p,i)=>`<div class="kv"><span>${dayLabel(p.date)}${p.acct?' · '+viaLabel(p.acct):''}</span><b>${money0(p.amount)} ${esc(S.settings.cur)}
@@ -2771,7 +2802,7 @@ function staySheet(id,preset){
   const st=id?S.stays.find(x=>x.id===id):{unitId:last?last.unitId||'':'',guest:'',phone:'',from:today(),nights:1,total:'',fee:0,
     channel:'booking',pays:[],cat:last?last.cat:rentCat,note:'',...(preset||{})};
   const cur=esc(S.settings.cur);
-  let ch=st.channel, acctTouched=false, pays=(st.pays||[]).map(p=>({...p})), feePay=st.feePay?{...st.feePay}:null;
+  let ch=st.channel, acctTouched=false, pays=(st.pays||[]).map(p=>({...p})), feePay=st.feePay?{...st.feePay}:null, editing=null;
   sheet(`<h2>${id?'تعديل الحجز':'حجز جديد'}</h2>
     ${st.cancelled?`<div class="banner" style="margin:0 0 13px">اتلغى ${dayLabel(st.cancelled)} — اتبقّى معاك <b class="num">${money0(Math.max(0,stayPaid(st)-stayRefunded(st)))} ${cur}</b>${stayRefunded(st)?` بعد ما رجّعت ${money0(stayRefunded(st))}`:''}. الليالي بقت فاضية.</div>`:''}
     <div class="f"><label>المصدر</label><div class="seg" id="sCh">${Object.keys(CH).map(c=>
@@ -2800,7 +2831,7 @@ function staySheet(id,preset){
         <div><label>يوم ما وصلت</label><input id="pD" type="date" value="${today()}"></div>
       </div><button type="button" id="pAll" style="font-size:12.5px;color:var(--brand);font-weight:600;margin-top:7px"></button></div>
       <div class="f" style="margin-bottom:10px"><label>وصلت في حساب</label><select id="pAc">${acctOpts(ch==='direct'||st.atProp?cashAcct():bankAcct())}</select></div>
-      <label class="chk" id="pPreW"><input type="checkbox" id="pPre" checked><span>الدفعة دي وصلت قبل ما أبدأ أسجّل في التطبيق — موجودة في الرصيد الافتتاحي، فمتتزودش عليه تاني</span></label>
+      <label class="chk" id="pPreW"><input type="checkbox" id="pPre" checked><span>الفلوس دي وصلتني قبل ما أبدأ أستخدم التطبيق — يعني موجودة في الرصيد اللي بدأت بيه، فمتتزودش تاني</span></label>
       </div>
     </div>
 
@@ -2843,15 +2874,15 @@ function staySheet(id,preset){
     $('#sFeeW').style.visibility=ch==='direct'?'hidden':'visible';
     $('#sApW').hidden=ch==='direct';
     const n=Math.max(1,Number($('#sN').value)|0), T=Number($('#sT').value)||0, F=feeNow(), due=dueNow();
-    $('#sCalc').innerHTML=T>0?`الليلة <span class="num">${money(T/n)}</span> ${cur}${F>0?` · الصافي بعد العمولة <b class="num" style="color:var(--chalk)">${money(T-F)}</b> ${cur}`:''}`:'';
+    $('#sCalc').innerHTML=T>0?`الليلة <span class="num">${money(T/n)}</span> ${cur}${F>0?` · يوصلك بعد العمولة <b class="num" style="color:var(--chalk)">${money(T-F)}</b> ${cur}`:''}`:'';
     const paid=pays.reduce((s,p)=>s+p.amount,0), left=Math.max(0,due-paid);
     $('#pSum').innerHTML=due>0?`· اتدفع <span class="num">${money0(paid)}</span> من <span class="num">${money0(due)}</span>`:'';
-    $('#pList').innerHTML=pays.map((p,i)=>`<div class="kv" style="padding:6px 0;align-items:center">
-        <span>${dayLabel(p.date)} · ${esc(acctOf(p.acct).name)}${p.pre?' · <small style="color:var(--dim)">قبل التطبيق</small>':''}</span>
+    $('#pList').innerHTML=pays.map((p,i)=>`<div class="kv" data-edpay="${i}" style="padding:6px 0;align-items:center;cursor:pointer" title="دوس تعدّل">
+        <span>✎ ${dayLabel(p.date)} · ${esc(acctOf(p.acct).name)}${p.pre?' · <small style="color:var(--dim)">كانت معايا قبل التطبيق</small>':''}</span>
         <span style="display:flex;gap:10px;align-items:center"><b>${money(p.amount)}</b>
           <button type="button" data-rmpay="${i}" aria-label="امسح الدفعة" style="color:var(--red);font-size:17px;line-height:1">×</button></span></div>`).join('')
-      +(pays.length&&!st.cancelled?'<div class="perf" style="margin:6px 0 10px"></div>':'');
-    $('#pAL').textContent=paid>0?'دفعة جديدة':'عربون أو دفعة وصلتك';
+      +(pays.length&&!st.cancelled?'<div style="font-size:11.5px;color:var(--dim);margin-top:2px">دوس على أي دفعة لو عايز تغيّر مبلغها أو يومها أو حسابها</div><div class="perf" style="margin:6px 0 10px"></div>':'');
+    $('#pAL').textContent=editing?'بتعدّل الدفعة — غيّر وحفظ':paid>0?'دفعة جديدة':'عربون أو دفعة وصلتك';
     $('#pAll').textContent=left>0?`اكتب ${paid>0?'الباقي':'المبلغ'} كله (${money0(left)})`:'';
     $('#pAll').hidden=!(left>0);
     /* only payments dated before the app's first entry can already be in the opening balance */
@@ -2867,7 +2898,15 @@ function staySheet(id,preset){
     $('#fpF').hidden=!$('#fpOn').checked;
     if($('#feeRm')) $('#feeRm').onclick=()=>{ feePay=null; upd(); };
   };
-  $('#pList').onclick=e=>{ const b=e.target.closest('[data-rmpay]'); if(!b) return; pays.splice(+b.dataset.rmpay,1); upd(); };
+  $('#pList').onclick=e=>{
+    const b=e.target.closest('[data-rmpay]'); if(b){ pays.splice(+b.dataset.rmpay,1); return upd(); }
+    /* tap a payment to change its amount, day or account — it keeps its place in the log */
+    const r=e.target.closest('[data-edpay]'); if(!r||st.cancelled) return;
+    if(editing) pays.push(editing);
+    editing=pays.splice(+r.dataset.edpay,1)[0];
+    $('#pA').value=editing.amount; $('#pD').value=editing.date; $('#pAc').value=editing.acct; acctTouched=true;
+    $('#pPre').checked=!!editing.pre; upd(); $('#pA').focus();
+  };
   $('#pAll').onclick=()=>{ const left=Math.max(0,dueNow()-pays.reduce((s,p)=>s+p.amount,0)); $('#pA').value=Math.round(left*100)/100; };
   const defAc=()=>{ if(!acctTouched) $('#pAc').value=ch==='direct'||atProp()?cashAcct():bankAcct(); };
   $('#sCh').onclick=e=>{
@@ -2892,22 +2931,28 @@ function staySheet(id,preset){
     let added=null;
     if(A>0){
       const d=$('#pD').value||today();
-      added={id:uid(),amount:A,date:d,acct:$('#pAc').value,pre:!$('#pPreW').hidden&&$('#pPre').checked};
+      added={id:editing?editing.id:uid(),...(editing&&editing.tx?{tx:editing.tx}:{}),amount:A,date:d,acct:$('#pAc').value,pre:!$('#pPreW').hidden&&$('#pPre').checked};
       pays.push(added);
     }
+    /* a refused save leaves the form as it was — a payment being edited stays in the edit fields */
+    const undoAdd=()=>{ if(added) pays.pop(); };
     const paid=pays.reduce((s,p)=>s+p.amount,0), due=AP?T:T-F;
-    if(paid>due+0.005){ if(added) pays.pop(); $('#pA').focus();
+    if(paid>due+0.005){ undoAdd(); $('#pA').focus();
       return toast(`المدفوع (${money0(paid)}) أكتر من ${AP?'إجمالي':'صافي'} الحجز (${money0(due)})`+(AP||ch==='direct'?'':' — لو الضيف دفع في الشقة علّم «بيدفع المبلغ كله في الشقة»')); }
     /* commission: recorded once paid; dropped if the booking no longer owes it separately */
     let fp=AP&&F>0?feePay:null;
     if(AP&&F>0&&!fp&&$('#fpOn').checked) fp={id:uid(),amount:F,date:$('#fpD').value||today(),acct:$('#fpAc').value};
     if(fp) fp.amount=F;
+    /* a changed arrival day moves the nights to other days (and maybe another month) — make sure it's meant */
+    const newFrom=$('#sF').value||today(), fmt=d=>`${+d.slice(8)} ${AR_MONTHS[+d.slice(5,7)-1]}`;
+    if(id && (newFrom!==st.from||n!==(st.nights|0)) &&
+       !confirm(`${newFrom!==st.from?`يوم الوصول اتغيّر من ${fmt(st.from)} لـ ${fmt(newFrom)}`:''}${newFrom!==st.from&&n!==(st.nights|0)?'\n':''}${n!==(st.nights|0)?`عدد الليالي اتغيّر من ${st.nights} لـ ${n}`:''}\n\nتحفظ التغيير؟`)){ undoAdd(); return; }
     const before=stayMoney(st);
     const v={unitId:await unitIdFor($('#sU').value),guest:$('#sG').value.trim(),phone:$('#sPh').value.trim(),from:$('#sF').value||today(),nights:n,total:T,fee:F,
       channel:ch,atProp:AP,pays,cat:$('#sC').value,note:$('#sNt').value.trim()};
     /* the same unit already booked on any of these nights? */
     const clash=st.cancelled?[]:stayClashes(S.stays,{id:id||'',unitId:v.unitId,from:v.from,nights:n});
-    if(clash.length && !confirm(`${unitName(v.unitId)||'الوحدة'} محجوزة في نفس الليالي:\n${clash.map(x=>`• ${x.guest||CH[x.channel].name} — ${stayDates(x)}`).join('\n')}\n\nتحفظ الحجز برضه؟`)){ if(added) pays.pop(); return; }
+    if(clash.length && !confirm(`${unitName(v.unitId)||'الوحدة'} محجوزة في نفس الليالي:\n${clash.map(x=>`• ${x.guest||CH[x.channel].name} — ${stayDates(x)}`).join('\n')}\n\nتحفظ الحجز برضه؟`)){ undoAdd(); return; }
     let rec=st;
     if(id) Object.assign(st,v);
     else{ rec={id:uid(),at:Date.now(),...v}; S.stays.push(rec); }
@@ -2918,7 +2963,7 @@ function staySheet(id,preset){
     if(!id) S.stayMonth=rec.from.slice(0,7);
     stayChanged();
     const left=stayLeft(rec);
-    toast(added&&!added.pre?`اتسجل دخل <span class="a">+${money(added.amount)}</span> ${cur}${left>0?` · فاضل ${money0(left)}`:''}`
+    toast(added&&editing?'اتعدلت الدفعة':added&&!added.pre?`اتسجل دخل <span class="a">+${money(added.amount)}</span> ${cur}${left>0?` · فاضل ${money0(left)}`:''}`
       :added?`اتسجلت الدفعة من غير ما تتزود على الرصيد${left>0?` · فاضل ${money0(left)}`:''}`
       :left>0?`اتسجل الحجز · فاضل ${money0(left)}`:'تم');
   };
@@ -3068,7 +3113,7 @@ function renderSet(){
   const bTxt = b===-1?'= الدخل المسجّل' : b>0? money0(b)+' '+cur : 'بدون';
   const catList=k=>catsOf(k).map(c=>`
     <button class="item" data-ec="${c.id}"><em${tone(c)}>${c.emoji}</em>
-      <span class="nm">${esc(c.name)}${k==='exp'&&c.fixed?'<small>ملتزم</small>':''}</span>
+      <span class="nm">${esc(c.name)}${k==='exp'&&c.fixed?'<small>أساسي</small>':''}</span>
       <span class="hint">${k==='exp'&&c.budget>0?money0(c.budget)+' '+cur:'—'}</span>
       <span class="chev">‹</span></button>`).join('<div class="perf"></div>');
 
@@ -3082,7 +3127,7 @@ function renderSet(){
         <button data-mode="pro" aria-pressed="${PRO()}">احترافي</button></div>
       <div style="font-size:12px;color:var(--dim);margin-top:9px;line-height:1.7">
         ${PRO()
-          ? '<b style="color:var(--chalk)">احترافي:</b> حسابات متعددة بأرصدة، تحويلات ومرتجعات، إجمالي فلوسك، مصاريف قادمة، تسوية، سلف، إيجارات، تنبيهات، و١٢ شهر.'
+          ? '<b style="color:var(--chalk)">احترافي:</b> حسابات متعددة بأرصدة، تحويلات ومرتجعات، إجمالي فلوسك، مصاريف جاية، عدّ الفلوس، سلف، إيجارات، تنبيهات، و١٢ شهر.'
           : '<b style="color:var(--chalk)">بسيط:</b> تسجيل مصروف ودخل، تصنيفات، ميزانية، وتقارير. من غير أي تعقيد.'}
         <br>تقدر تبدّل في أي وقت — مفيش بيانات بتضيع، بتتخفي وبس.
       </div></div>
@@ -3104,7 +3149,7 @@ function renderSet(){
         <span class="hint">${money0(balance(a.id))}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>
       <button class="ghost" id="addAcc2">+ حساب جديد</button></div>`:''}
 
-    <div class="sec"><h2>تصنيفات المصاريف<button id="fvBtn">ملتزم/اختياري</button></h2>
+    <div class="sec"><h2>تصنيفات المصاريف<button id="fvBtn">أساسي/كماليات</button></h2>
       <div class="list">${catList('exp')}</div>
       <button class="ghost" data-add="exp">+ تصنيف مصروف</button></div>
 
@@ -3228,7 +3273,7 @@ function catSheet(id,kind){
     <div class="f"><label>كلمات بتختار التصنيف ده لوحدها (افصل بفاصلة)</label>
       <textarea id="cW" rows="3" placeholder="${k==='inc'?'مثلاً: راتب، بونص':'مثلاً: شاورما، قهوة، كارفور'}">${esc((c.words||[]).join('، '))}</textarea></div>
     ${k==='exp'?`<label class="chk"><input type="checkbox" id="cF" ${c.fixed?'checked':''}>
-      <span>مصروف ملتزم بيه (إيجار، فواتير، قسط) — مش اختياري</span></label>`:''}
+      <span>مصروف أساسي ما ينفعش تستغنى عنه (إيجار، فواتير، قسط)</span></label>`:''}
     <div class="acts">
       ${id&&catsOf(k).length>1?'<button class="del" id="cD">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="cOk">حفظ</button></div>`);
