@@ -113,24 +113,42 @@ function debtFlows(d){
 /* a booking: {from:'YYYY-MM-DD', nights, total, fee, channel, pays:[{amount,date,acct,pre?}]} — the guest
    sleeps the nights from `from` up to (not including) the checkout day. Payments are what actually
    arrived (a deposit, then the rest); `pre` marks money received before the app was in use, already
-   inside the opening balance. Older bookings carry a single `paidOn` instead of `pays`. */
+   inside the opening balance. Older bookings carry a single `paidOn` instead of `pays`.
+   `atProp`: a platform booking the guest pays in full at the property; the platform bills its
+   commission later (`feePay` once it's paid). `cancelled`: the day it was called off — its nights
+   are free again, what was kept is earned on that day, and `refunds` is what went back to the guest. */
 const stayNet=st=>Math.max(0,(st.total||0)-(st.fee||0));
 const stayPaid=st=>st.pays?st.pays.reduce((s,p)=>s+p.amount,0):(st.paidOn?stayNet(st):0);
-const stayLeft=st=>Math.max(0,stayNet(st)-stayPaid(st));
+const stayRefunded=st=>(st.refunds||[]).reduce((s,p)=>s+p.amount,0);
+/* what reaches you for the booking: the net payout, or the full price when the guest pays at the property */
+const stayDue=st=>st.atProp?(st.total||0):stayNet(st);
+const stayLeft=st=>st.cancelled?0:Math.max(0,stayDue(st)-stayPaid(st));
+/* commission still owed to the platform for a pay-at-property booking */
+const stayFeeOwed=st=>st.atProp&&!st.cancelled&&!st.feePay&&(st.fee||0)>0?st.fee:0;
+const isPlatform=st=>st.channel==='booking'||st.channel==='airbnb';
 const stayOut=st=>iso(addDays(parseISO(st.from),Math.max(1,st.nights|0)));
-/* nights of the stay that fall in month `mk` */
+/* nights of the stay that fall in month `mk` (a cancelled booking has none) */
 function stayNightsIn(st,mk){
+  if(st.cancelled) return 0;
   const [y,m]=mk.split('-').map(Number), a=parseISO(st.from), out=parseISO(stayOut(st));
   const lo=new Date(Math.max(a,new Date(y,m-1,1))), hi=new Date(Math.min(out,new Date(y,m,1)));
   return Math.max(0,Math.round((hi-lo)/864e5));
 }
+/* what a booking earned in month `mk`: its net split by the nights, or for a cancelled one
+   whatever was kept, on the day it was cancelled */
+function stayEarnedIn(st,mk){
+  if(st.cancelled) return st.cancelled.slice(0,7)===mk?Math.max(0,stayPaid(st)-stayRefunded(st)):0;
+  const n=stayNightsIn(st,mk);
+  return n?stayNet(st)*n/Math.max(1,st.nights|0):0;
+}
 /* the month's picture: nights booked, money by channel (split by the nights in the month),
    and payouts not received yet (any month) */
 function staySummary(stays,mk){
-  const out={nights:0,gross:0,fees:0,net:0,count:0,by:{},pending:0,pendingN:0};
+  const out={nights:0,gross:0,fees:0,net:0,count:0,by:{},pending:0,pendingN:0,kept:0};
   for(const st of stays){
     const left=stayLeft(st);
     if(left>0.005){ out.pending+=left; out.pendingN++; }
+    if(st.cancelled){ const k=stayEarnedIn(st,mk); out.kept+=k; out.net+=k; continue; }
     const n=stayNightsIn(st,mk); if(!n) continue;
     const share=n/Math.max(1,st.nights|0);
     out.count++; out.nights+=n;
@@ -141,21 +159,82 @@ function staySummary(stays,mk){
   return out;
 }
 
+/* ═══════ rental units ═══════ */
+/* a unit is {id,name,archived?}. Bookings, contracts and expenses point at it by `unitId`;
+   older data carries the unit's name in `unit` instead. */
+const unitKey=x=>x.unitId||String(x.unit||'').trim();
+/* is this tx part of the rental business rather than personal money? */
+const isBiz=t=>!!(t.stay||t.rent||t.unitId||t.unit);
+/* scope 'mine' = personal only, 'biz' = the rentals only, anything else = everything */
+const inScope=(t,scope)=>scope==='mine'?!isBiz(t):scope==='biz'?isBiz(t):true;
+
+/* move names to ids: creates a unit per distinct name (case/spacing-insensitive), points every
+   booking, contract and tx at it, and tags the income each booking or contract logged.
+   Returns the touched records so the caller can save just those. */
+function migrateUnits({units=[],stays=[],rents=[],txs=[]},newId){
+  const out={units:units.slice(),stays:new Set(),rents:new Set(),txs:new Set(),unitsChanged:false};
+  const byName=new Map(out.units.map(u=>[norm(u.name),u]));
+  const idOf=name=>{
+    const n=String(name||'').trim(); if(!n) return '';
+    let u=byName.get(norm(n));
+    if(!u){ u={id:newId(),name:n}; out.units.push(u); byName.set(norm(n),u); out.unitsChanged=true; }
+    return u.id;
+  };
+  const fix=(x,set)=>{ if(x.unitId||!('unit' in x)) return;
+    const id=idOf(x.unit); delete x.unit; if(id) x.unitId=id; set.add(x); };
+  stays.forEach(x=>fix(x,out.stays)); rents.forEach(x=>fix(x,out.rents)); txs.forEach(x=>fix(x,out.txs));
+  const txById=new Map(txs.map(t=>[t.id,t]));
+  const tag=(id,f)=>{ const t=txById.get(id); if(t&&f(t)) out.txs.add(t); };
+  for(const st of stays) for(const p of [...(st.pays||[]),...(st.refunds||[]),...(st.feePay?[st.feePay]:[])])
+    if(p.tx) tag(p.tx,t=>{ let ch=false;
+      if(t.stay!==st.id){ t.stay=st.id; ch=true; }
+      if((t.unitId||'')!==(st.unitId||'')){ if(st.unitId) t.unitId=st.unitId; else delete t.unitId; ch=true; }
+      return ch; });
+  for(const r of rents) for(const ids of Object.values(r.txs||{})) for(const id of ids)
+    tag(id,t=>{ let ch=false;
+      if(t.rent!==r.id){ t.rent=r.id; ch=true; }
+      if((t.unitId||'')!==(r.unitId||'')){ if(r.unitId) t.unitId=r.unitId; else delete t.unitId; ch=true; }
+      return ch; });
+  return {units:out.units,unitsChanged:out.unitsChanged,stays:[...out.stays],rents:[...out.rents],txs:[...out.txs]};
+}
+
+/* the rentals' month, for one unit (`unit` = its id, '' = no unit) or all of them (undefined).
+   Two views of the same month, side by side:
+   - earned: bookings by the nights slept (net of commission) plus each contract's monthly rent —
+     what the month is worth, paid or not
+   - cash: the money that actually came in this month (deposits for later stays included) less
+     what went out, commissions paid and refunds to guests included */
+function rentalMonth({stays=[],rents=[],txs=[]},mk,unit,now){
+  const mine=x=>unit===undefined||unitKey(x)===unit;
+  let earned=0, nights=0, rentDue=0;
+  for(const st of stays) if(mine(st)){ earned+=stayEarnedIn(st,mk); nights+=stayNightsIn(st,mk); }
+  const cur=iso(now||new Date()).slice(0,7);
+  for(const r of rents) if(mine(r) && mk>=String(r.start||'').slice(0,7) && mk<=cur) rentDue+=r.amount;
+  earned+=rentDue;
+  const tx=txs.filter(t=>isBiz(t) && mine(t) && t.date.slice(0,7)===mk);
+  const s=f=>tx.filter(f).reduce((a,t)=>a+t.amount,0);
+  const collected=s(t=>t.kind==='inc')-s(t=>t.kind==='exp'&&t.refund);
+  const fees=s(t=>t.kind==='exp'&&t.fee);
+  const cost=s(t=>t.kind==='exp'&&!t.refund)-s(t=>t.kind==='ref');
+  /* the earned view already took the commission off each booking — don't take it twice */
+  const costEarned=cost-fees;
+  return {earned,nights,rentDue,collected,cost,fees,costEarned,
+    profit:collected-cost, profitEarned:earned-costEarned};
+}
+/* kept for older callers: a unit's month, earned view */
+function unitMonth(stays,txs,unit,mk){
+  const r=rentalMonth({stays,txs},mk,unit);
+  return {income:r.earned,cost:r.costEarned,profit:r.profitEarned,nights:r.nights};
+}
+/* units that could have been rented by the night in month `mk` — the occupancy divisor */
+function unitsLiveIn(stays,mk){
+  return new Set(stays.filter(st=>!st.cancelled && st.from.slice(0,7)<=mk).map(unitKey)).size;
+}
+
 /* other bookings of the same unit whose nights overlap `st`'s (checkout day is free for the next guest) */
 function stayClashes(stays,st){
-  const u=String(st.unit||'').trim(), a=st.from, b=stayOut(st);
-  return stays.filter(x=>x.id!==st.id && String(x.unit||'').trim()===u && x.from<b && stayOut(x)>a);
-}
-/* a unit's month: booking income (split by nights) less the expenses tagged with it */
-function unitMonth(stays,txs,unit,mk){
-  let income=0, nights=0;
-  for(const st of stays) if((st.unit||'')===unit){
-    const n=stayNightsIn(st,mk); if(!n) continue;
-    nights+=n; income+=stayNet(st)*n/Math.max(1,st.nights|0);
-  }
-  const mine=txs.filter(t=>t.unit===unit && t.date.slice(0,7)===mk);
-  const cost=mine.filter(t=>t.kind==='exp').reduce((s,t)=>s+t.amount,0)-mine.filter(t=>t.kind==='ref').reduce((s,t)=>s+t.amount,0);
-  return {income,cost,profit:income-cost,nights};
+  const u=unitKey(st), a=st.from, b=stayOut(st);
+  return stays.filter(x=>x.id!==st.id && !x.cancelled && unitKey(x)===u && x.from<b && stayOut(x)>a);
 }
 /* WhatsApp wants the number in international form: 010… → 2010… */
 function waNumber(x){
@@ -171,8 +250,21 @@ function dueItems({debts=[],plans=[],rents=[],stays=[]},now,days=7){
   const t=iso(now), soon=iso(addDays(now,days)), out=[];
   /* guests arriving within 3 days (or already in) who still owe part of the booking */
   const near=iso(addDays(now,3));
-  for(const st of stays){ const left=stayLeft(st); if(left>0.005 && st.from<=near)
-    out.push({type:'stay',id:st.id,name:st.guest||st.unit||'',unit:st.unit||'',date:st.from,amount:left,late:st.from<t}); }
+  for(const st of stays){
+    const left=stayLeft(st), co=stayOut(st);
+    if(left>0.005){
+      /* a platform pays out after the guest arrives — only chase it once it's two weeks past checkout */
+      if(isPlatform(st)&&!st.atProp){ const late=iso(addDays(parseISO(co),14));
+        if(late<t) out.push({type:'stay',id:st.id,name:st.guest||st.unit||'',unit:st.unit||'',unitId:st.unitId||'',date:co,amount:left,late:true,payout:true}); }
+      else if(st.from<=near)
+        out.push({type:'stay',id:st.id,name:st.guest||st.unit||'',unit:st.unit||'',unitId:st.unitId||'',date:st.from,amount:left,late:st.from<t});
+    }
+    /* commission the platform will bill for a pay-at-property stay, from checkout on */
+    const fee=stayFeeOwed(st);
+    if(fee>0 && co<=soon)
+      out.push({type:'fee',id:st.id,name:st.guest||st.unit||'',unit:st.unit||'',unitId:st.unitId||'',channel:st.channel,date:co,amount:fee,
+        late:iso(addDays(parseISO(co),30))<t});
+  }
   for(const d of debts) if(!d.settledAt && d.due && d.due<=soon)
     out.push({type:'debt',id:d.id,name:d.person,dir:d.dir,date:d.due,amount:debtLeft(d),late:d.due<t});
   for(const p of plans) if(!p.done && p.date<=soon)
@@ -880,5 +972,6 @@ function repairBackup(raw){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayOut,stayNightsIn,staySummary,stayClashes,unitMonth,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
+  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
+  unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,CAT_WORDS,checkBackup,repairBackup};

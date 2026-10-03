@@ -362,3 +362,99 @@ test('repairBackup fixes instead of refusing', () => {
   assert.equal(L.checkBackup(d), '');
   assert.equal(L.repairBackup(null).d, null);
 });
+
+test('rentals kept apart from personal money', async t => {
+  await t.test('isBiz / inScope', () => {
+    const mine = { kind: 'exp', amount: 50 }, clean = { kind: 'exp', amount: 80, unitId: 'u1' },
+      book = { kind: 'inc', amount: 900, stay: 's1' }, rent = { kind: 'inc', amount: 5000, rent: 'r1' };
+    assert.equal(L.isBiz(mine), false);
+    assert.ok([clean, book, rent].every(L.isBiz));
+    assert.deepEqual([mine, clean, book, rent].filter(x => L.inScope(x, 'mine')), [mine]);
+    assert.equal([mine, clean, book, rent].filter(x => L.inScope(x, 'biz')).length, 3);
+    assert.equal([mine, clean, book, rent].filter(x => L.inScope(x, 'all')).length, 4);
+  });
+  await t.test('migrateUnits: names become ids, income gets tagged', () => {
+    let n = 0; const id = () => 'u' + (++n);
+    const stays = [{ id: 's1', unit: 'الشقة ', pays: [{ id: 'p1', amount: 500, tx: 't1' }] }, { id: 's2', unit: 'الشقه' }, { id: 's3' }];
+    const rents = [{ id: 'r1', unit: 'المحل', txs: { '2026-10': ['t2'] } }];
+    const txs = [{ id: 't1', kind: 'inc', stay: 's1' }, { id: 't2', kind: 'inc' }, { id: 't3', kind: 'exp', unit: 'الشقة' }, { id: 't4', kind: 'exp' }];
+    const r = L.migrateUnits({ units: [], stays, rents, txs }, id);
+    assert.deepEqual(r.units.map(u => u.name), ['الشقة', 'المحل']);
+    assert.equal(stays[0].unitId, 'u1'); assert.equal(stays[1].unitId, 'u1'); assert.equal('unit' in stays[0], false);
+    assert.equal(stays[2].unitId, undefined);
+    assert.equal(rents[0].unitId, 'u2');
+    assert.equal(txs[0].unitId, 'u1'); assert.equal(txs[1].rent, 'r1'); assert.equal(txs[1].unitId, 'u2');
+    assert.equal(txs[2].unitId, 'u1'); assert.equal(txs[3].unitId, undefined);
+    // running it again changes nothing
+    const again = L.migrateUnits({ units: r.units, stays, rents, txs }, id);
+    assert.equal(again.unitsChanged, false); assert.equal(again.stays.length + again.rents.length + again.txs.length, 0);
+  });
+  await t.test('rentalMonth: earned by nights vs collected in cash', () => {
+    const now = new Date(2026, 10, 15);
+    // 3 Oct nights + 1 Nov night, net 4000; deposit paid in Sep, rest in Oct
+    const a = { id: 'a', unitId: 'u1', from: '2026-10-29', nights: 4, total: 4000, fee: 0, channel: 'direct',
+      pays: [{ amount: 1000, date: '2026-09-20' }, { amount: 3000, date: '2026-10-29' }] };
+    const rent = { id: 'r1', unitId: 'u2', amount: 6000, start: '2026-10-01', paid: [] };
+    const txs = [
+      { kind: 'inc', amount: 1000, date: '2026-09-20', stay: 'a', unitId: 'u1' },
+      { kind: 'inc', amount: 3000, date: '2026-10-29', stay: 'a', unitId: 'u1' },
+      { kind: 'exp', amount: 200, date: '2026-10-30', unitId: 'u1' },
+      { kind: 'exp', amount: 999, date: '2026-10-30' } ];
+    const oct = L.rentalMonth({ stays: [a], rents: [rent], txs }, '2026-10', 'u1', now);
+    assert.equal(oct.earned, 3000); assert.equal(oct.collected, 3000); assert.equal(oct.cost, 200);
+    assert.equal(oct.profitEarned, 2800); assert.equal(oct.profit, 2800);
+    const sep = L.rentalMonth({ stays: [a], rents: [rent], txs }, '2026-09', 'u1', now);
+    assert.equal(sep.earned, 0); assert.equal(sep.collected, 1000);
+    const nov = L.rentalMonth({ stays: [a], rents: [rent], txs }, '2026-11', undefined, now);
+    assert.equal(nov.earned, 1000 + 6000); assert.equal(nov.rentDue, 6000); assert.equal(nov.collected, 0);
+    // contracts don't earn before they start or in the future
+    assert.equal(L.rentalMonth({ rents: [rent] }, '2026-09', 'u2', now).earned, 0);
+    assert.equal(L.rentalMonth({ rents: [rent] }, '2026-12', 'u2', now).earned, 0);
+    // old helper still answers in the earned view
+    assert.deepEqual(L.unitMonth([a], txs, 'u1', '2026-10'), { income: 3000, cost: 200, profit: 2800, nights: 3 });
+  });
+  await t.test('pay at the property: full price due, commission billed later', () => {
+    const st = { id: 'b', unitId: 'u1', from: '2026-10-03', nights: 2, total: 2000, fee: 300, channel: 'booking', atProp: true, pays: [] };
+    assert.equal(L.stayDue(st), 2000); assert.equal(L.stayLeft(st), 2000); assert.equal(L.stayNet(st), 1700);
+    assert.equal(L.stayFeeOwed(st), 300);
+    st.pays.push({ amount: 2000, date: '2026-10-03' });
+    assert.equal(L.stayLeft(st), 0);
+    const txs = [{ kind: 'inc', amount: 2000, date: '2026-10-03', stay: 'b', unitId: 'u1' },
+      { kind: 'exp', amount: 300, date: '2026-10-31', stay: 'b', unitId: 'u1', fee: true }];
+    const r = L.rentalMonth({ stays: [st], txs }, '2026-10', 'u1');
+    assert.equal(r.earned, 1700); assert.equal(r.collected, 2000); assert.equal(r.cost, 300); assert.equal(r.fees, 300);
+    assert.equal(r.profit, 1700); assert.equal(r.profitEarned, 1700);   // commission counted once either way
+    const due = L.dueItems({ stays: [st] }, new Date(2026, 9, 6));
+    assert.deepEqual(due.map(x => [x.type, x.amount, x.late]), [['fee', 300, false]]);
+    assert.equal(L.dueItems({ stays: [st] }, new Date(2026, 10, 10)).find(x => x.type === 'fee').late, true);
+    st.feePay = { amount: 300, date: '2026-10-31' };
+    assert.equal(L.stayFeeOwed(st), 0); assert.equal(L.dueItems({ stays: [st] }, new Date(2026, 9, 6)).length, 0);
+  });
+  await t.test('cancelled bookings free their nights and earn what was kept', () => {
+    const st = { id: 'c', unitId: 'u1', from: '2026-10-10', nights: 3, total: 3000, fee: 0, channel: 'direct',
+      pays: [{ amount: 1000, date: '2026-09-25' }], cancelled: '2026-10-02', refunds: [{ amount: 400, date: '2026-10-02' }] };
+    assert.equal(L.stayNightsIn(st, '2026-10'), 0); assert.equal(L.stayLeft(st), 0);
+    assert.equal(L.stayEarnedIn(st, '2026-10'), 600); assert.equal(L.stayEarnedIn(st, '2026-09'), 0);
+    const s = L.staySummary([st], '2026-10');
+    assert.equal(s.nights, 0); assert.equal(s.net, 600); assert.equal(s.kept, 600); assert.equal(s.pending, 0);
+    const other = { id: 'd', unitId: 'u1', from: '2026-10-11', nights: 1 };
+    assert.deepEqual(L.stayClashes([st, other], other), []);
+    const txs = [{ kind: 'inc', amount: 1000, date: '2026-09-25', stay: 'c', unitId: 'u1' },
+      { kind: 'exp', amount: 400, date: '2026-10-02', stay: 'c', unitId: 'u1', refund: true }];
+    const oct = L.rentalMonth({ stays: [st], txs }, '2026-10', 'u1');
+    assert.equal(oct.collected, -400); assert.equal(oct.cost, 0); assert.equal(oct.earned, 600);
+  });
+  await t.test('platform payouts are chased only well after checkout', () => {
+    const st = { id: 'p', from: '2026-10-03', nights: 2, total: 2000, fee: 300, channel: 'airbnb', pays: [] };
+    assert.equal(L.dueItems({ stays: [st] }, new Date(2026, 9, 3)).length, 0);
+    assert.equal(L.dueItems({ stays: [st] }, new Date(2026, 9, 15)).length, 0);
+    const late = L.dueItems({ stays: [st] }, new Date(2026, 9, 25));
+    assert.deepEqual(late.map(x => [x.type, x.amount, x.late, x.payout]), [['stay', 1700, true, true]]);
+  });
+  await t.test('occupancy counts units already taking guests', () => {
+    const stays = [{ unitId: 'u1', from: '2026-08-01', nights: 2 }, { unitId: 'u2', from: '2026-10-01', nights: 2 },
+      { unitId: 'u3', from: '2026-07-01', nights: 2, cancelled: '2026-06-01' }];
+    assert.equal(L.unitsLiveIn(stays, '2026-09'), 1);
+    assert.equal(L.unitsLiveIn(stays, '2026-10'), 2);
+  });
+});
