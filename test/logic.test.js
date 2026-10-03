@@ -458,3 +458,19 @@ test('rentals kept apart from personal money', async t => {
     assert.equal(L.unitsLiveIn(stays, '2026-10'), 2);
   });
 });
+
+test('bought on credit', () => {
+  const t = { id: 'x', kind: 'exp', amount: 1200, acct: 'cash', date: '2026-10-01',
+    credit: { vendor: 'السباك', due: '2026-10-20', pays: [] } };
+  assert.equal(L.txDelta(t, 'cash'), 0);              // nothing left the account yet
+  assert.equal(L.creditLeft(t), 1200);
+  t.credit.pays.push({ amount: 500, date: '2026-10-05', acct: 'bank' });
+  assert.deepEqual(L.creditFlows(t), [{ acct: 'bank', date: '2026-10-05', at: undefined, amount: -500 }]);
+  assert.equal(L.creditPaid(t), 500); assert.equal(L.creditLeft(t), 700);
+  const due = L.dueItems({ credits: [t] }, new Date(2026, 9, 15));
+  assert.deepEqual(due.map(x => [x.type, x.name, x.amount, x.late]), [['credit', 'السباك', 700, false]]);
+  assert.equal(L.dueItems({ credits: [t] }, new Date(2026, 9, 25))[0].late, true);
+  assert.equal(L.dueItems({ credits: [t] }, new Date(2026, 9, 1)).length, 0);   // more than a week away
+  assert.equal(L.creditLeft({ ...t, credit: { ...t.credit, settledAt: '2026-10-06' } }), 0);
+  assert.deepEqual(L.creditFlows({ kind: 'exp', amount: 5 }), []);
+});

@@ -571,7 +571,7 @@ nav button.fab.on svg{width:25px;height:25px;padding:4px 16px;margin-top:0;borde
       <div class="tabs noscroll" id="walTabs">
         <button data-wt="acc" aria-pressed="true">حسابات</button>
         <button data-wt="due" aria-pressed="false">قادم</button>
-        <button data-wt="debt" aria-pressed="false">سلف</button>
+        <button data-wt="debt" aria-pressed="false">سلف وآجل</button>
         <button data-wt="rent" aria-pressed="false">إيجارات</button>
       </div>
       <div id="walBody"></div>
@@ -754,9 +754,12 @@ const MINE=()=>hasBiz()?'mine':'all';
 
 /* every account movement that isn't a tx: debts lent, borrowed and repaid */
 const debtMoves=()=>S.debts.flatMap(debtFlows);
+/* every account movement outside a tx's own amount: debts, and payments on things bought on credit */
+const moneyMoves=()=>[...debtMoves(),...S.tx.flatMap(creditFlows)];
+const credits=()=>S.tx.filter(t=>t.credit);
 function balance(id){
   return S.tx.reduce((b,t)=>b+txDelta(t,id),acctOf(id).opening||0)
-    +debtMoves().reduce((b,f)=>b+(f.acct===id?f.amount:0),0);
+    +moneyMoves().reduce((b,f)=>b+(f.acct===id?f.amount:0),0);
 }
 const netWorth=()=>liveAccts().reduce((s,a)=>s+balance(a.id),0);
 
@@ -1197,8 +1200,9 @@ function renderReadout(){
   $('#tag').innerHTML=tag;
   const ok = Number(a)>0 && (k!=='trf' || (S.draft.toAcct && S.draft.toAcct!==S.draft.acct));
   $('#save').disabled=!ok;
-  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit);
+  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit||!!S.draft.credit);
   if(S.draft.unit && k!=='trf' && k!=='inc') $('#tag').innerHTML+=` · 🏘 ${esc(unitName(S.draft.unit))}`;
+  if(S.draft.credit && k==='exp') $('#tag').innerHTML+=` · 🧾 آجل${S.draft.credit.vendor?' — '+esc(S.draft.credit.vendor):''}`;
   if(S.draft.fee && k==='trf') $('#tag').innerHTML+=` · رسوم ${money(S.draft.fee)}`;
   $('#catLbl').hidden = S.draft.kind==='trf' || !PRO();
   $('#acctLbl').hidden = !PRO() && S.draft.kind!=='trf';
@@ -1248,7 +1252,8 @@ async function commit(t,onUndo){
   if(rec.kind==='trf') label=`${acctOf(rec.acct).emoji}→${acctOf(rec.toAcct).emoji}`;
   else label=catOf(rec.cat).emoji;
   const sign=(rec.kind==='inc'||rec.kind==='ref')?'+':'';
-  toast(`${label} <span class="a">${sign}${money(rec.amount)}</span> ${esc(S.settings.cur)}${warn}`,
+  const cr=rec.credit?`<br><small>🧾 آجل — الرصيد مش هيتحرك غير لما تدفع</small>`:'';
+  toast(`${label} <span class="a">${sign}${money(rec.amount)}</span> ${esc(S.settings.cur)}${cr}${warn}`,
     async()=>{ await Store.del('tx',rec.id); S.tx=S.tx.filter(x=>x.id!==rec.id);
       if(onUndo) await onUndo();
       renderRail(); renderQuick(); renderAccts(); renderLog(); toast('اتراجعنا'); });
@@ -1305,7 +1310,7 @@ function renderRail(){
 }
 
 /* ── what's due: late or within a week (debts, upcoming expenses, rent — all pro features) ── */
-const dueNow=()=>PRO()?dueItems({debts:S.debts,plans:S.plans,rents:S.rents,stays:S.stays},new Date()):[];
+const dueNow=()=>PRO()?dueItems({debts:S.debts,plans:S.plans,rents:S.rents,stays:S.stays,credits:credits()},new Date()):[];
 function renderDue(){
   const items=dueNow(), b=$('#dueBtn');
   b.hidden=!items.length;
@@ -1320,8 +1325,9 @@ $('#dueBtn').addEventListener('click',()=>{
   const title=i=>i.type==='debt'?(i.dir==='out'?`${esc(i.name)} — ليك عنده`:`عليك لـ${esc(i.name)}`)
     :i.type==='rent'?`إيجار ${esc(i.name)}${i.months>1?` — ${i.months} شهور`:''}`
     :i.type==='stay'?`${esc(i.name)}${i.unitId&&unitName(i.unitId)!==i.name?' — '+esc(unitName(i.unitId)):''} · ${i.payout?'تحويل المنصة':'باقي الحجز'}`
-    :i.type==='fee'?`عمولة ${CH[i.channel].name} — ${esc(i.name)}`:esc(i.name);
-  const icon=i=>i.type==='debt'?(i.dir==='out'?'↗':'↘'):i.type==='rent'?'🏘':i.type==='stay'?'🛎':i.type==='fee'?'🧾':'📅';
+    :i.type==='fee'?`عمولة ${CH[i.channel].name} — ${esc(i.name)}`
+    :i.type==='credit'?`آجل — ${esc(i.name)}`:esc(i.name);
+  const icon=i=>i.type==='debt'?(i.dir==='out'?'↗':'↘'):i.type==='rent'?'🏘':i.type==='stay'?'🛎':i.type==='fee'?'🧾':i.type==='credit'?'🧾':'📅';
   const sub=i=>i.type==='stay'?(i.payout?`المغادرة ${dayLabel(i.date)} · <b style="color:var(--red)">التحويل اتأخر</b>`
       :`${i.late?'وصل ':'واصل '}${dayLabel(i.date)}${i.late?' · <b style="color:var(--red)">لسه ما دفعش الباقي</b>':''}`)
     :i.type==='fee'?`المغادرة ${dayLabel(i.date)} · ${i.late?'<b style="color:var(--red)">لسه ما اتدفعتش</b>':'المنصة هتطالبك بيها'}`
@@ -1335,6 +1341,7 @@ $('#dueBtn').addEventListener('click',()=>{
   $('#sheet').querySelectorAll('[data-due]').forEach(x=>x.onclick=()=>{
     const i=items[+x.dataset.due]; closeSheet();
     if(i.type==='rent'){ S.walTab='rent'; go('wal'); return; }
+    if(i.type==='credit') return setTimeout(()=>creditSheet(i.id),120);
     if(i.type==='stay'||i.type==='fee'){ S.walTab='rent'; go('wal'); setTimeout(()=>staySheet(i.id),120); return; }
     setTimeout(()=>i.type==='debt'?debtSheet(i.id):planSheet(i.id),120);
   });
@@ -1375,6 +1382,7 @@ $('#noteBtn').addEventListener('click',()=>{
       <input id="fNote" maxlength="80" placeholder="مثلاً: بنزين العربية" value="${esc(S.draft.note)}"></div>
     <div class="f"><label>التاريخ</label><input id="fDate" type="date" value="${S.draft.date}"></div>
     ${unitField(S.draft.unit,S.draft.kind)}
+    ${creditFields(S.draft.kind==='exp'&&PRO()?(S.draft.credit||null):undefined)}
     ${S.draft.kind==='trf'?`<div class="f"><label>رسوم التحويل (إنستاباي / فودافون كاش / البنك)</label>
       <input id="fFee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${S.draft.fee||''}"></div>`:''}
     ${ccOpts}
@@ -1389,6 +1397,7 @@ $('#noteBtn').addEventListener('click',()=>{
     S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null;
     S.draft.unit=$('#fUnit')?$('#fUnit').value:'';
     S.draft.fee=$('#fFee')?Math.max(0,Number($('#fFee').value)||0):0;
+    S.draft.credit=readCredit();
     closeSheet(); renderReadout();
   };
 });
@@ -1470,6 +1479,7 @@ $('#save').addEventListener('click',async()=>{
   if(k==='trf') t.toAcct=S.draft.toAcct; else t.cat=S.draft.cat;
   if(cc){ t.ccy=cc.code; t.raw=raw; t.rate=cc.rate; }
   if(S.draft.unit && (k==='exp'||k==='ref')) t.unitId=S.draft.unit;
+  if(S.draft.credit && k==='exp' && PRO()) t.credit={...S.draft.credit,pays:[]};
   if(k!=='trf' && S.draft.catPicked && S.draft.note) await learnFrom(S.draft.note,S.draft.cat);
   if(k!=='trf' && !S.draft.catGuessed) S.lastCat[k]=S.draft.cat;
   if(S.draft.catGuessed){ S.draft.cat=S.draft.prevCat||S.draft.cat; S.draft.catGuessed=false; }
@@ -1479,7 +1489,7 @@ $('#save').addEventListener('click',async()=>{
     const f={id:uid(),at:Date.now()-1,kind:'exp',amount:S.draft.fee,cat:fc.id,acct:t.acct,note:'رسوم تحويل',date:t.date};
     await Store.put('tx',f); S.tx.push(f);
   }
-  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0;
+  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null;
   await commit(t);
 });
 
@@ -1530,12 +1540,16 @@ function renderLog(){
   if(S.filter.kind) list=list.filter(t=>t.kind===S.filter.kind);
   if(S.filter.cat) list=list.filter(t=>t.cat===S.filter.cat);
   if(S.filter.acct) list=list.filter(t=>t.acct===S.filter.acct||t.toAcct===S.filter.acct);
-  if(S.filter.scope){ list=list.filter(t=>inScope(t,S.filter.scope)); if(S.filter.scope==='biz') dl=[]; }
+  /* payments on things bought on credit: money moving, not new expenses */
+  let cl=S.filter.kind||S.filter.cat?[]:credits().flatMap(t=>(t.credit.pays||[]).map(p=>({t,date:p.date,acct:p.acct,amount:p.amount})));
+  if(S.filter.acct) cl=cl.filter(x=>x.acct===S.filter.acct);
+  if(S.filter.scope){ list=list.filter(t=>inScope(t,S.filter.scope)); cl=cl.filter(x=>inScope(x.t,S.filter.scope)); if(S.filter.scope==='biz') dl=[]; }
+  if(S.search){ const q=norm(S.search); cl=cl.filter(x=>norm((x.t.credit.vendor||'')+' '+(x.t.note||'')).includes(q)); }
   if(S.search) list=list.filter(t=>matches(t,S.search));
   const active=S.filter.cat||S.filter.acct||S.filter.kind||S.filter.scope;
   $('#logFilter').textContent=active?'إلغاء التصفية':'تصفية';
   const tot=sum(list.filter(t=>t.kind==='exp'))-sum(list.filter(t=>t.kind==='ref'));
-  const n=list.length+dl.length;
+  const n=list.length+dl.length+cl.length;
   $('#logSub').innerHTML=n
     ?`${n} حركة${S.search||active?` · <span class="num">${money0(tot)}</span> ${esc(S.settings.cur)} مصاريف`:''}`
     :'فاضي';
@@ -1548,7 +1562,8 @@ function renderLog(){
   const g={}, gd={};
   list.forEach(t=>{(g[t.date]=g[t.date]||[]).push(t);});
   dl.forEach(x=>{(gd[x.date]=gd[x.date]||[]).push(x);});
-  $('#logBody').innerHTML=[...new Set([...Object.keys(g),...Object.keys(gd)])].sort((a,b)=>b.localeCompare(a)).map(d=>{
+  const gc={}; cl.forEach(x=>{(gc[x.date]=gc[x.date]||[]).push(x);});
+  $('#logBody').innerHTML=[...new Set([...Object.keys(g),...Object.keys(gd),...Object.keys(gc)])].sort((a,b)=>b.localeCompare(a)).map(d=>{
     const day=g[d]||[];
     const dE=sum(day.filter(t=>t.kind==='exp'))-sum(day.filter(t=>t.kind==='ref'));
     const dI=sum(day.filter(t=>t.kind==='inc'));
@@ -1557,13 +1572,14 @@ function renderLog(){
       const isTrf=t.kind==='trf';
       const icon=isTrf?'⇄':catOf(t.cat).emoji;
       const name=isTrf?`${acctOf(t.acct).name} ← ${acctOf(t.toAcct).name}`:catOf(t.cat).name;
-      const bits=[t.note, t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
+      const bits=[t.note, t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
+        t.credit?`🧾 آجل${t.credit.vendor?' — '+t.credit.vendor:''}${creditLeft(t)>0?` · فاضل ${money0(creditLeft(t))}`:' · اتدفع'}`:'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
       return `<button class="row${t._new?' print':''}" data-tx="${t.id}">
         <em${isTrf?' style="--t:var(--iris)"':tone(catOf(t.cat))}>${icon}</em>
         <span class="meta"><span class="nm">${esc(name)}</span>${bits.length?`<span class="nt">${esc(bits.join(' · '))}</span>`:''}</span>
-        ${isTrf?'':`<span class="pill">${esc(acctOf(t.acct).name)}</span>`}
+        ${isTrf?'':`<span class="pill">${t.credit?'آجل':esc(acctOf(t.acct).name)}</span>`}
         <span class="val${cls}">${sign}${money(t.amount)}</span></button>`;
     }).concat((gd[d]||[]).map(x=>{
       const plus=(x.d.dir==='in')!==x.pay;
@@ -1572,7 +1588,11 @@ function renderLog(){
         <span class="meta"><span class="nm">${esc(debtRowName(x))}</span><span class="nt">سلف${x.d.note&&!x.pay?' · '+esc(x.d.note):''}</span></span>
         <span class="pill">${esc(acctOf(x.acct).name)}</span>
         <span class="val trf">${plus?'+':'−'}${money(x.amount)}</span></button>`;
-    })).join('<div class="perf"></div>');
+    })).concat((gc[d]||[]).map(x=>`<button class="row" data-crow="${x.t.id}">
+        <em style="--t:var(--iris)">🧾</em>
+        <span class="meta"><span class="nm">سداد آجل${x.t.credit.vendor?' لـ'+esc(x.t.credit.vendor):''}</span><span class="nt">${esc(x.t.note||catOf(x.t.cat).name)} · اتحسب مصروف ${dayLabel(x.t.date)}</span></span>
+        <span class="pill">${esc(acctOf(x.acct).name)}</span>
+        <span class="val trf">−${money(x.amount)}</span></button>`)).join('<div class="perf"></div>');
     if(!day.length) return `<div class="daygrp"><div class="dayhd"><span class="d">${dayLabel(d)}</span></div>
       <div class="roll">${rows}</div></div>`;
     const totTxt=anyInc?(net>=0?'+'+money(net):money(net)):money(dE);
@@ -1584,7 +1604,8 @@ function renderLog(){
 }
 $('#logBody').addEventListener('click',e=>{
   const b=e.target.closest('[data-tx]'); if(b) return editTx(b.dataset.tx);
-  const r=e.target.closest('[data-debtrow]'); if(r) debtSheet(r.dataset.debtrow);
+  const r=e.target.closest('[data-debtrow]'); if(r) return debtSheet(r.dataset.debtrow);
+  const c=e.target.closest('[data-crow]'); if(c) creditSheet(c.dataset.crow);
 });
 $('#logSearch').addEventListener('click',()=>{
   const w=$('#searchWrap'); w.hidden=!w.hidden;
@@ -1594,6 +1615,48 @@ $('#logSearch').addEventListener('click',()=>{
 });
 $('#searchIn').addEventListener('input',e=>{ S.search=e.target.value; renderLog(); });
 
+/* «آجل»: bought or repaired now, paid later. `val` undefined = not offered, null = off, object = on.
+   Once something was paid on it, it stays on credit (locked). */
+function creditFields(val,locked){
+  if(val===undefined) return '';
+  const on=!!val, v=val||{};
+  return `<label class="chk" style="margin:4px 0 10px"><input type="checkbox" id="cOn" ${on?'checked':''} ${locked?'disabled':''}
+      onchange="document.getElementById('cF').hidden=!this.checked"><span>🧾 آجل — اشتريت أو صلّحت دلوقتي وهدفع بعدين</span></label>
+    <div id="cF"${on?'':' hidden'}><div class="f"><div class="row2">
+      <div><label>لمين (المحل / الصنايعي)</label><input id="cV" maxlength="40" placeholder="مثلاً: السباك" value="${esc(v.vendor||'')}"></div>
+      <div><label>هدفع يوم (اختياري)</label><input id="cD" type="date" value="${v.due||''}"></div></div></div>
+      <div style="font-size:12px;color:var(--dim);line-height:1.7;margin:-4px 0 10px">بيتحسب مصروف النهاردة في التقارير والميزانية، والرصيد مش بيتحرك غير لما تدفع.</div></div>`;
+}
+const readCredit=()=>$('#cOn')&&$('#cOn').checked?{vendor:$('#cV').value.trim(),due:$('#cD').value||''}:null;
+/* paying off something bought on credit — all at once or in parts, from any account */
+function creditSheet(id){
+  const t=S.tx.find(x=>x.id===id); if(!t||!t.credit) return;
+  const cur=esc(S.settings.cur), c=t.credit, left=creditLeft(t), cat=catOf(t.cat);
+  sheet(`<h2>آجل${c.vendor?' — '+esc(c.vendor):''}</h2>
+    <p class="lede">${cat.emoji} ${esc(t.note||cat.name)} · ${dayLabel(t.date)}${t.unitId?' · 🏘 '+esc(unitName(t.unitId)):''}${c.due?` · الدفع ${dayLabel(c.due)}`:''}</p>
+    <div class="kv"><span>المبلغ</span><b>${money(t.amount)} ${cur}</b></div><div class="perf"></div>
+    ${(c.pays||[]).map((p,i)=>`<div class="kv" style="padding:6px 0;align-items:center"><span>${dayLabel(p.date)} · ${esc(acctOf(p.acct).name)}</span>
+      <span style="display:flex;gap:10px;align-items:center"><b>${money(p.amount)}</b>
+        <button type="button" data-rmcp="${i}" aria-label="امسح الدفعة" style="color:var(--red);font-size:17px;line-height:1">×</button></span></div>`).join('')}
+    <div class="kv big"><span>فاضل</span><b style="color:${left>0?'var(--chalk)':'var(--mint)'}">${left>0?money(left)+' '+cur:'اتدفع بالكامل ✓'}</b></div>
+    ${left>0?`<div class="f" style="margin-top:14px"><div class="row2">
+      <div><label>دفعت</label><input id="cpA" type="number" inputmode="decimal" min="0" step="0.01" value="${Math.round(left*100)/100}"></div>
+      <div><label>يوم</label><input id="cpD" type="date" value="${today()}"></div></div></div>
+    <div class="f"><label>من حساب</label><select id="cpV">${acctOpts(defAcct())}</select></div>`:''}
+    <div class="acts"><button class="no" id="cpEd">تفاصيل المصروف</button>${left>0?'<button class="go" id="cpOk">سجّل الدفعة</button>':'<button class="go" onclick="closeSheet()">تمام</button>'}</div>`);
+  const done=async msg=>{ await Store.put('tx',t); closeSheet(); renderLog(); renderRail(); renderAccts(); renderWal(); toast(msg); };
+  $('#sheet').querySelectorAll('[data-rmcp]').forEach(b=>b.onclick=async()=>{
+    c.pays.splice(+b.dataset.rmcp,1); delete c.settledAt; await Store.put('tx',t); renderLog(); renderAccts(); renderWal(); creditSheet(id); });
+  $('#cpEd').onclick=()=>editTx(id);
+  if($('#cpOk')) $('#cpOk').onclick=async()=>{
+    const a=Number($('#cpA').value), via=$('#cpV').value;
+    if(!(a>0)||a>left+0.005){ $('#cpA').focus(); return toast(`المبلغ لازم يكون أكبر من 0 ولحد ${money(left)}`); }
+    if(!okToTake(via,a)) return;
+    c.pays=[...(c.pays||[]),{id:uid(),amount:a,date:$('#cpD').value||today(),acct:via,at:Date.now()}];
+    if(creditLeft(t)<=0.005) c.settledAt=today();
+    await done(c.settledAt?`اتدفع بالكامل · اتخصم من ${esc(acctOf(via).name)}`:`فاضل ${money0(creditLeft(t))} ${cur}`);
+  };
+}
 function editTx(id){
   const t=S.tx.find(x=>x.id===id); if(!t) return;
   if(t.stay && S.stays.some(st=>st.id===t.stay)){ toast('الدفعة دي من حجز — عدّلها من الحجز'); return staySheet(t.stay); }
@@ -1615,6 +1678,8 @@ function editTx(id){
     <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">${acctOpts(t.toAcct)}</select></div>
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
     <div id="eUnitW">${unitField(t.unitId||'',t.kind,'eUnit')}</div>
+    <div id="eCrW">${creditFields(t.kind==='exp'&&(PRO()||t.credit)?(t.credit||null):undefined,creditPaid(t)>0)}</div>
+    ${t.credit?`<button type="button" class="ghost" id="eCrPay" style="margin-top:0">🧾 ${creditLeft(t)>0?`فاضل ${money0(creditLeft(t))} — سجّل دفعة`:'اتدفع بالكامل — شوف الدفعات'}</button>`:''}
     <div class="acts"><button class="del" id="eDel">حذف</button>
       <button class="go" id="eOk">حفظ التعديل</button></div>`);
   $('#eKind').onchange=e=>{
@@ -1623,10 +1688,14 @@ function editTx(id){
     if(!trf) $('#eCat').innerHTML=catsOf(k==='ref'?'exp':k)
       .map(c=>`<option value="${c.id}">${c.emoji} ${esc(c.name)}</option>`).join('');
     $('#eUnitW').innerHTML=unitField($('#eUnit')?$('#eUnit').value:(t.unitId||''),k,'eUnit');
+    if(!creditPaid(t)) $('#eCrW').innerHTML=creditFields(k==='exp'&&PRO()?($('#cOn')?readCredit():(t.credit||null)):undefined);
   };
+  if($('#eCrPay')) $('#eCrPay').onclick=()=>creditSheet(t.id);
   $('#eOk').onclick=async()=>{
     const a=Number($('#eAmt').value); if(!(a>0)){ $('#eAmt').focus(); return; }
     const k=$('#eKind').value;
+    if(t.credit && a<creditPaid(t)-0.005){ $('#eAmt').focus(); return toast(`اتدفع منه ${money(creditPaid(t))} — المبلغ ما ينفعش يبقى أقل`); }
+    if(creditPaid(t)>0 && k!=='exp'){ toast('عليه دفعات آجل — امسحها الأول'); return; }
     /* validate before touching t, so a rejected edit doesn't leave memory out of sync with the DB */
     if(k==='trf' && $('#eTo').value===$('#eAcct').value){ toast('الحسابين نفس الحساب'); return; }
     /* amount is edited in base currency — the original foreign amount no longer applies */
@@ -1641,6 +1710,11 @@ function editTx(id){
     /* booking and rent income keep their unit — it follows the booking / contract */
     if(k==='exp'||k==='ref'){ if(u) t.unitId=u; else delete t.unitId; }
     else if(!t.stay && !t.rent) delete t.unitId;
+    if(k==='exp'){ const c=$('#cOn')?readCredit():t.credit&&creditPaid(t)?t.credit:null;
+      if(c){ const pays=t.credit?t.credit.pays||[]:[]; t.credit={...(t.credit||{}),...c,pays};
+        if(creditPaid(t)>=a-0.005) t.credit.settledAt=t.credit.settledAt||today(); else delete t.credit.settledAt; }
+      else delete t.credit; }
+    else delete t.credit;
     if(k!=='trf' && t.cat!==catBefore && t.note) await learnFrom(t.note,t.cat);
     await Store.put('tx',t); sortTx();
     closeSheet(); renderLog(); renderRail(); renderAccts(); toast('اتعدل');
@@ -1780,7 +1854,7 @@ function renderRep(){
   /* per account */
   let acc='';
   if(E>0){
-    const list=liveAccts().map(a=>({a,v:sum(exp.filter(t=>t.acct===a.id))-sum(ref.filter(t=>t.acct===a.id))}))
+    const list=liveAccts().map(a=>({a,v:sum(exp.filter(t=>t.acct===a.id&&!t.credit))-sum(ref.filter(t=>t.acct===a.id))}))
                           .filter(x=>x.v>0).sort((x,y)=>y.v-x.v);
     if(list.length) acc=`<div class="card"><h3>مصاريفك حسب الحساب</h3>
       ${list.map(({a,v})=>`<div class="brow">
@@ -1962,7 +2036,7 @@ function printReport(mk){
     <h2>كل الحركات (${txs.length})</h2>
     <table><tr><th>اليوم</th><th>النوع</th><th>التصنيف</th><th>الحساب</th><th>ملاحظة</th><th class="n">المبلغ</th></tr>
       ${txs.map(t=>`<tr><td>${+t.date.slice(8)} ${AR_M3[+t.date.slice(5,7)-1]}</td><td>${KINDS[t.kind].label}</td>
-        <td>${t.kind==='trf'?'→ '+esc(acctOf(t.toAcct).name):esc(catOf(t.cat).name)}</td><td>${esc(acctOf(t.acct).name)}</td>
+        <td>${t.kind==='trf'?'→ '+esc(acctOf(t.toAcct).name):esc(catOf(t.cat).name)}</td><td>${t.credit?'آجل':esc(acctOf(t.acct).name)}</td>
         <td>${isBiz(t)?'🏘 ':''}${esc(t.note||'')}</td><td class="n">${t.kind==='inc'||t.kind==='ref'?'+':''}${money(t.amount)}</td></tr>`).join('')}</table>
     ${biz?'<div class="meta">🏘 = حركة تابعة للإيجارات.</div>':''}`;
   makePdf(`qersh-abyad-report-${mk}.pdf`);
@@ -2079,7 +2153,7 @@ function expectedFor(acct){
   const L=lastRecon(acct);
   if(!L) return null;
   const d=S.tx.filter(t=>afterRecon(t,L)).reduce((s,t)=>s+txDelta(t,acct),0)
-    +debtMoves().filter(f=>f.acct===acct&&afterRecon(f,L)).reduce((s,f)=>s+f.amount,0);
+    +moneyMoves().filter(f=>f.acct===acct&&afterRecon(f,L)).reduce((s,f)=>s+f.amount,0);
   return {base:L.cash, from:L.date, delta:d, expected:L.cash+d};
 }
 function reconCard(mk){
@@ -2214,12 +2288,26 @@ function walDue(){
         <span class="hint">${money0(p.amount)}</span></button>`).join('<div class="perf"></div>')}</div></div>`:''}
     <div style="height:14px"></div>`;
 }
+/* what's still owed for things bought or repaired on credit */
+function creditList(){
+  const cur=esc(S.settings.cur), open=credits().filter(t=>creditLeft(t)>0.005)
+    .sort((a,b)=>(a.credit.due||'9').localeCompare(b.credit.due||'9'));
+  if(!open.length) return '';
+  const tot=open.reduce((s,t)=>s+creditLeft(t),0);
+  return `<div class="sec"><h2>عليّ آجل <span style="font-size:13px;font-weight:500;color:var(--dim)">${money0(tot)} ${cur}</span></h2><div class="list">${open.map(t=>{
+    const late=t.credit.due&&t.credit.due<today(), c=catOf(t.cat);
+    return `<button class="item" data-credit="${t.id}"><em${tone(c)}>${c.emoji}</em>
+      <span class="nm">${esc(t.credit.vendor||t.note||c.name)}<small>${esc(t.note||c.name)} · ${dayLabel(t.date)}${t.unitId?' · 🏘 '+esc(unitName(t.unitId)):''}${t.credit.due?` · الدفع ${dayLabel(t.credit.due)}`:''}${late?' ⚠':''}${creditPaid(t)?` · اتدفع ${money0(creditPaid(t))} من ${money0(t.amount)}`:''}</small></span>
+      <span class="hint" style="color:${late?'var(--red)':'var(--chalk)'}">${money0(creditLeft(t))}</span><span class="chev">‹</span></button>`;}).join('<div class="perf"></div>')}</div>
+    <div style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.7">اتحسبت مصاريف يوم ما اشتريتها. الدفع بيحرّك الرصيد بس. علشان تسجّل حاجة آجل: في التسجيل دوس (✎) واختار «آجل».</div></div>`;
+}
 function walDebt(){
   const cur=esc(S.settings.cur);
   const open=S.debts.filter(d=>!d.settledAt), done=S.debts.filter(d=>d.settledAt)
     .sort((a,b)=>b.settledAt.localeCompare(a.settledAt));
   const out=open.filter(d=>d.dir==='out'), inn=open.filter(d=>d.dir==='in');
-  const sO=out.reduce((s,d)=>s+debtLeft(d),0), sI=inn.reduce((s,d)=>s+debtLeft(d),0);
+  /* what you owe includes things bought on credit and not paid off yet */
+  const sO=out.reduce((s,d)=>s+debtLeft(d),0), sI=inn.reduce((s,d)=>s+debtLeft(d),0)+credits().reduce((s,t)=>s+creditLeft(t),0);
   const rows=list=>list.map(d=>{
     const late=d.due&&d.due<today();
     return `<button class="item" data-debt="${d.id}"><em>${d.dir==='out'?'↗':'↘'}</em>
@@ -2234,7 +2322,8 @@ function walDebt(){
       <span style="color:var(--dim);font-size:12px">السلف مش داخلة في دخل ومصروف الشهر، بس بتحرّك رصيد الحساب اللي اخترته</span></div>
     ${out.length?`<div class="sec"><h2>ليّ عند الناس</h2><div class="list">${rows(out)}</div></div>`:''}
     ${inn.length?`<div class="sec"><h2>عليّ للناس</h2><div class="list">${rows(inn)}</div></div>`:''}
-    ${!S.debts.length?`<div class="empty"><div class="h">مفيش سلف مسجّلة</div>
+    ${creditList()}
+    ${!S.debts.length&&!credits().length?`<div class="empty"><div class="h">مفيش سلف مسجّلة</div>
       <div class="p">سجّل مين واخد منك ومين ليه عندك.</div></div>`:''}
     <button class="ghost" id="addDebt">+ سلفة جديدة</button>
     ${done.length?`<div class="sec"><h2>مسدّدة (${done.length})</h2><div class="list">${done.slice(0,15).map(d=>
@@ -2437,6 +2526,7 @@ function bindWal(){
   b.querySelectorAll('[data-acc]').forEach(x=>x.onclick=()=>acctSheet(x.dataset.acc));
   b.querySelectorAll('[data-plan]').forEach(x=>x.onclick=()=>planSheet(x.dataset.plan));
   b.querySelectorAll('[data-debt]').forEach(x=>x.onclick=()=>debtSheet(x.dataset.debt));
+  b.querySelectorAll('[data-credit]').forEach(x=>x.onclick=()=>creditSheet(x.dataset.credit));
   b.querySelectorAll('[data-rent]').forEach(x=>x.onclick=()=>rentSheet(x.dataset.rent));
   b.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>togglePay(x.dataset.pay));
   const g=id=>b.querySelector('#'+id);
@@ -2494,7 +2584,7 @@ function acctSheet(id){
   };
   const d=$('#aD');
   if(d) d.onclick=async()=>{
-    const used=S.tx.filter(t=>t.acct===id||t.toAcct===id).length+debtMoves().filter(f=>f.acct===id).length;
+    const used=S.tx.filter(t=>t.acct===id||t.toAcct===id).length+moneyMoves().filter(f=>f.acct===id).length;
     if(used){ toast(`فيه ${used} حركة على الحساب ده — اقفله بدل ما تحذفه`); return; }
     await Store.del('acct',id); S.accts=S.accts.filter(x=>x.id!==id);
     if(S.draft.acct===id) S.draft.acct=liveAccts()[0].id;
@@ -3221,11 +3311,11 @@ function download(name,text,type){
 function exportCsv(){
   if(!S.tx.length) return toast('مفيش بيانات للتصدير');
   const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
-  const head=['التاريخ','النوع','التصنيف','الحساب','إلى حساب','المبلغ','العملة الأصلية','المبلغ الأصلي','ملاحظة','شخصي / إيجارات','الوحدة'].map(q).join(',');
+  const head=['التاريخ','النوع','التصنيف','الحساب','إلى حساب','المبلغ','العملة الأصلية','المبلغ الأصلي','ملاحظة','شخصي / إيجارات','الوحدة','آجل لـ','آجل فاضل'].map(q).join(',');
   const val=t=>t.kind==='inc'||t.kind==='ref'?t.amount:t.kind==='trf'?0:-t.amount;
   const body=[...S.tx].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>
     [t.date,KINDS[t.kind].label,t.kind==='trf'?'':catOf(t.cat).name,acctOf(t.acct).name,
-     t.toAcct?acctOf(t.toAcct).name:'',val(t),t.ccy||'',t.raw||'',t.note||'',isBiz(t)?'إيجارات':'شخصي',unitName(t.unitId)].map(q).join(',')).join('\n');
+     t.toAcct?acctOf(t.toAcct).name:'',val(t),t.ccy||'',t.raw||'',t.note||'',isBiz(t)?'إيجارات':'شخصي',unitName(t.unitId),t.credit?(t.credit.vendor||'آجل'):'',t.credit?creditLeft(t):''].map(q).join(',')).join('\n');
   let csv=head+'\n'+body;
   csv+='\n\n'+['الحسابات','الاسم','النوع','الرصيد'].map(q).join(',')+'\n'+
        S.accts.map(a=>['',a.name,a.type==='cash'?'كاش':'بنك',balance(a.id)].map(q).join(',')).join('\n');

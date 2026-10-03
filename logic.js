@@ -21,6 +21,8 @@ function daysElapsed(mk,now){
 /* ═══════ money ═══════ */
 /* signed effect of one transaction on account `id` */
 function txDelta(t,id){
+  /* bought on credit: the expense counts on the day of purchase, but money only leaves with each payment (creditFlows) */
+  if(t.credit && t.kind==='exp') return 0;
   if(t.kind==='trf') return (t.toAcct===id?t.amount:0)-(t.acct===id?t.amount:0);
   if(t.acct!==id) return 0;
   return (t.kind==='inc'||t.kind==='ref') ? t.amount : -t.amount;
@@ -108,6 +110,14 @@ function debtFlows(d){
   for(const p of (d.pays||[])) if(p.acct) out.push({acct:p.acct,date:p.date,at:p.at,amount:-s*p.amount});
   return out;
 }
+
+/* ═══════ bought on credit ═══════ */
+/* an expense with `credit:{vendor,due,pays:[{amount,date,acct,at}],settledAt?}` — logged when bought
+   or repaired, paid later in one go or in parts. Payments move account balances; they are never
+   counted as expenses again. */
+const creditPaid=t=>((t.credit&&t.credit.pays)||[]).reduce((s,p)=>s+p.amount,0);
+const creditLeft=t=>!t.credit||t.credit.settledAt?0:Math.max(0,t.amount-creditPaid(t));
+const creditFlows=t=>t.credit?(t.credit.pays||[]).filter(p=>p.acct).map(p=>({acct:p.acct,date:p.date,at:p.at,amount:-p.amount})):[];
 
 /* ═══════ nightly stays ═══════ */
 /* a booking: {from:'YYYY-MM-DD', nights, total, fee, channel, pays:[{amount,date,acct,pre?}]} — the guest
@@ -246,8 +256,11 @@ function waNumber(x){
 
 /* ═══════ what's due ═══════ */
 /* open debts, upcoming expenses and unpaid rent that are late or due within `days` */
-function dueItems({debts=[],plans=[],rents=[],stays=[]},now,days=7){
+function dueItems({debts=[],plans=[],rents=[],stays=[],credits=[]},now,days=7){
   const t=iso(now), soon=iso(addDays(now,days)), out=[];
+  for(const c of credits){ const left=creditLeft(c);
+    if(left>0.005 && c.credit.due && c.credit.due<=soon)
+      out.push({type:'credit',id:c.id,name:c.credit.vendor||c.note||'',date:c.credit.due,amount:left,late:c.credit.due<t}); }
   /* guests arriving within 3 days (or already in) who still owe part of the booking */
   const near=iso(addDays(now,3));
   for(const st of stays){
@@ -972,6 +985,6 @@ function repairBackup(raw){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,debtFlows,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
+  debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,CAT_WORDS,checkBackup,repairBackup};
