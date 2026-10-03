@@ -2282,30 +2282,78 @@ function renderWal(){
   $('#walBody').innerHTML=B();
   bindWal(); renderDue();
 }
+/* the accounts tab: everything, or just the cash, the bank, the other currencies, or one account */
 function walAcc(){
-  const cur=esc(S.settings.cur), w=netWorth();
-  const base=liveAccts().filter(a=>!a.ccy), fx=liveAccts().filter(a=>a.ccy);
-  const cash=base.filter(a=>a.type==='cash'&&!a.ccy).reduce((s,a)=>s+balance(a.id),0);
-  const bank=base.filter(a=>a.type!=='cash').reduce((s,a)=>s+balance(a.id),0), fxv=w-cash-bank;
+  const cur=esc(S.settings.cur), live=liveAccts();
+  const base=live.filter(a=>!a.ccy), fx=live.filter(a=>a.ccy);
+  const GROUPS={all:['الكل','إجمالي فلوسك',live],cash:['💵 الكاش','الكاش اللي معاك',base.filter(a=>a.type==='cash')],
+    bank:['🏦 البنك والكروت','البنك والكروت',base.filter(a=>a.type!=='cash')],fx:['💱 العملات','فلوسك بالعملات التانية',fx]};
+  let f=S.settings.walFilter||'all';
+  if(!GROUPS[f] && !live.some(a=>a.id===f)) f='all';
+  if(f==='fx'&&!fx.length) f='all';
+  const one=GROUPS[f]?null:acctOf(f);
+  const chips=[...Object.keys(GROUPS).filter(k=>k!=='fx'||fx.length).map(k=>[k,GROUPS[k][0]]),...live.map(a=>[a.id,`${a.emoji} ${esc(a.name)}`])]
+    .map(([k,l])=>`<button class="c" data-wf="${k}" aria-pressed="${k===f}">${l}</button>`).join('');
+  const strip=`<div class="strip" id="walF" style="padding:12px 0 0;margin:0 calc(-1 * var(--pad));padding-inline:var(--pad)">${chips}</div>`;
   const row=a=>{ const b=balance(a.id);
     const g=a.ccy?fxGain(a,S.tx,rateOf(a)):null;
     return `<button class="item" data-acc="${a.id}"><em${tone(a)}>${a.emoji}</em>
         <span class="nm">${esc(a.name)}<small>${a.ccy?`≈ ${money0(balanceBase(a.id))} ${cur} · سعر ${rateOf(a)}${Math.abs(g.gain)>=1?` · <b style="color:${g.gain>=0?'var(--mint)':'var(--red)'}">${g.gain>=0?'زادت':'قلّت'} ${money0(Math.abs(g.gain))}</b>`:''}`:a.type==='cash'?'كاش':'بنك / كارت'}</small></span>
         <span class="hint" style="color:${b>=0?'var(--chalk)':'var(--red)'};font-size:14px">${balTxt(a)}</span>
         <span class="chev">‹</span></button>`; };
-  return `<div class="worth"><div class="cap">إجمالي فلوسك</div>
-      <div class="v">${money(w)}<span class="cur">${cur}</span></div>
-      <div class="sub">كاش <span class="num">${money0(cash)}</span> · بنك وكروت <span class="num">${money0(bank)}</span>${fx.length?` · عملات <span class="num">${money0(fxv)}</span>`:''}</div></div>
-    <div class="list" style="margin-top:14px">${base.map(row).join('<div class="perf"></div>')}</div>
-    ${fx.length?`<div class="sec"><h2>فلوس بعملات تانية</h2></div><div class="list">${fx.map(row).join('<div class="perf"></div>')}</div>
-      <div style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.7">القيمة بالجنيه بتتحسب بالسعر اللي في الإعدادات ← العملات. «زادت / قلّت» = الفرق بين قيمتها دلوقتي واللي دفعته فيها.</div>`:''}
-    <button class="ghost" id="addAcc">+ حساب جديد</button>
+  const tail=`<button class="ghost" id="addAcc">+ حساب جديد</button>
     <button class="ghost" id="addFx">💱 فلوس بعملة تانية (دولار، يورو…)</button>
     <button class="ghost" id="doRecon">عدّ فلوس حساب وطابقها</button>
     ${S.accts.some(a=>a.archived)?`<div class="sec"><h2>حسابات مقفولة</h2><div class="list">${
       S.accts.filter(a=>a.archived).map(a=>`<button class="item done" data-acc="${a.id}"><em>${a.emoji}</em>
         <span class="nm">${esc(a.name)}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div></div>`:''}
     <div style="height:14px"></div>`;
+  if(one) return strip+acctDetail(one)+tail;
+  const list=GROUPS[f][2], w=list.reduce((s,a)=>s+balanceBase(a.id),0);
+  const cash=base.filter(a=>a.type==='cash').reduce((s,a)=>s+balance(a.id),0);
+  const bank=base.filter(a=>a.type!=='cash').reduce((s,a)=>s+balance(a.id),0);
+  const lb=list.filter(a=>!a.ccy), lf=list.filter(a=>a.ccy);
+  return `${strip}<div class="worth"><div class="cap">${GROUPS[f][1]}</div>
+      <div class="v">${money(w)}<span class="cur">${cur}</span></div>
+      <div class="sub">${f==='all'?`كاش <span class="num">${money0(cash)}</span> · بنك وكروت <span class="num">${money0(bank)}</span>${fx.length?` · عملات <span class="num">${money0(w-cash-bank)}</span>`:''}`
+        :`${list.length===1?'حساب واحد':list.length+' حسابات'}${f!=='all'&&live.length?` · ${Math.round(w/Math.max(1,netWorth())*100)}% من فلوسك`:''}`}</div></div>
+    ${lb.length?`<div class="list" style="margin-top:14px">${lb.map(row).join('<div class="perf"></div>')}</div>`:''}
+    ${lf.length?`${lb.length?'<div class="sec"><h2>فلوس بعملات تانية</h2></div>':'<div style="height:14px"></div>'}<div class="list">${lf.map(row).join('<div class="perf"></div>')}</div>
+      <div style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.7">القيمة بالجنيه بتتحسب بالسعر اللي في الإعدادات ← العملات. «زادت / قلّت» = الفرق بين قيمتها دلوقتي واللي دفعته فيها.</div>`:''}
+    ${!list.length?`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حسابات هنا.</div></div>`:''}
+    ${tail}`;
+}
+/* one account: its balance, this month in and out, and its latest movements */
+function acctDetail(a){
+  const cur=esc(S.settings.cur), sym=esc(symOf(a)), r=rateOf(a), mk=today().slice(0,7);
+  const d=t=>txDelta(t,a.id,a.ccy,r);
+  const txs=S.tx.filter(t=>t.acct===a.id||t.toAcct===a.id).map(t=>({t,date:t.date,at:t.at||0,v:d(t)})).filter(x=>Math.abs(x.v)>0.0001);
+  const conv=v=>v/(a.ccy?r:1);
+  const other=[...S.debts.flatMap(x=>debtFlows(x).filter(m=>m.acct===a.id).map(m=>({date:m.date,at:m.at||0,v:conv(m.amount),
+      name:`سلف — ${x.person}`,debt:x.id}))),
+    ...credits().flatMap(t=>creditFlows(t).filter(m=>m.acct===a.id).map(m=>({date:m.date,at:m.at||0,v:conv(m.amount),
+      name:`سداد آجل${t.credit.vendor?' لـ'+t.credit.vendor:''}`,credit:t.id})))];
+  const all=[...txs,...other].sort((x,y)=>y.date.localeCompare(x.date)||y.at-x.at);
+  const month=all.filter(x=>x.date.slice(0,7)===mk);
+  const inM=month.filter(x=>x.v>0).reduce((s,x)=>s+x.v,0), outM=month.filter(x=>x.v<0).reduce((s,x)=>s-x.v,0);
+  const label=x=>{
+    if(!x.t) return {icon:x.debt?'↔':'🧾',name:x.name,sub:''};
+    const t=x.t;
+    if(t.kind==='trf'){ const o=acctOf(t.acct===a.id?t.toAcct:t.acct); return {icon:'⇄',name:t.acct===a.id?`تحويل لـ${o.name}`:`تحويل من ${o.name}`,sub:t.note||''}; }
+    const c=catOf(t.cat); return {icon:c.emoji,name:t.note||c.name,sub:c.name+(t.kind==='ref'?' · مرتجع':'')};
+  };
+  const shown=all.slice(0,40);
+  return `<div class="worth"><div class="cap">${a.emoji} ${esc(a.name)}</div>
+      <div class="v">${money(balance(a.id))}<span class="cur">${sym}</span></div>
+      <div class="sub">${a.ccy?`≈ <span class="num">${money0(balanceBase(a.id))}</span> ${cur} · `:''}الشهر ده: دخل <span class="num" dir="ltr">+${money0(inM)}</span> · خرج <span class="num" dir="ltr">−${money0(outM)}</span></div></div>
+    <div class="row2" style="margin-top:12px"><button class="ghost" id="accEdit" style="margin:0">✎ تعديل الحساب</button>
+      ${a.ccy?`<button class="ghost" id="accFx" style="margin:0">💱 تحويل عملة</button>`:a.type==='cash'?`<button class="ghost" id="accRecon" style="margin:0">عدّ الفلوس</button>`:'<span></span>'}</div>
+    <div class="sec"><h2>آخر الحركات ${all.length>40?`<span style="font-size:12px;font-weight:500;color:var(--dim)">آخر 40 من ${all.length}</span>`:''}</h2></div>
+    ${shown.length?`<div class="list">${shown.map(x=>{ const l=label(x);
+      return `<button class="item" ${x.t?`data-atx="${x.t.id}"`:x.debt?`data-adebt="${x.debt}"`:`data-acr="${x.credit}"`}><em>${l.icon}</em>
+        <span class="nm">${esc(l.name)}<small>${dayLabel(x.date)}${l.sub?' · '+esc(l.sub):''}</small></span>
+        <span class="hint" dir="ltr" style="color:${x.v>=0?'var(--mint)':'var(--chalk)'}">${x.v>=0?'+':'−'}${money(Math.abs(x.v))}</span></button>`;}).join('<div class="perf"></div>')}</div>`
+      :`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حركات على الحساب ده لسه.</div></div>`}`;
 }
 function walDue(){
   const cur=esc(S.settings.cur);
@@ -2604,6 +2652,15 @@ function bindWal(){
   const g=id=>b.querySelector('#'+id);
   if(g('addAcc')) g('addAcc').onclick=()=>acctSheet(null);
   if(g('addFx')) g('addFx').onclick=()=>acctSheet(null,{fx:true});
+  /* accounts tab filter: all / cash / bank / currencies / one account — remembered */
+  b.querySelectorAll('[data-wf]').forEach(x=>x.onclick=async()=>{ S.settings.walFilter=x.dataset.wf; renderWal(); await saveSettings();
+    const sel=b.querySelector('[data-wf][aria-pressed="true"]'); if(sel) sel.scrollIntoView({block:'nearest',inline:'center'}); });
+  b.querySelectorAll('[data-atx]').forEach(x=>x.onclick=()=>editTx(x.dataset.atx));
+  b.querySelectorAll('[data-adebt]').forEach(x=>x.onclick=()=>debtSheet(x.dataset.adebt));
+  b.querySelectorAll('[data-acr]').forEach(x=>x.onclick=()=>creditSheet(x.dataset.acr));
+  if(g('accEdit')) g('accEdit').onclick=()=>acctSheet(S.settings.walFilter);
+  if(g('accFx')) g('accFx').onclick=()=>fxSheet({from:S.settings.walFilter});
+  if(g('accRecon')) g('accRecon').onclick=()=>reconSheet(S.settings.walFilter);
   if(g('doRecon')) g('doRecon').onclick=()=>reconSheet(null);
   if(g('addPlan')) g('addPlan').onclick=()=>planSheet(null);
   if(g('addDebt')) g('addDebt').onclick=()=>debtSheet(null);
