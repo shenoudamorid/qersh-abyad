@@ -2323,9 +2323,11 @@ function walAcc(){
     ${!list.length?`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حسابات هنا.</div></div>`:''}
     ${tail}`;
 }
-/* one account: its balance, this month in and out, and its latest movements */
+/* one account: its balance, and for the month picked — what was spent from it by category,
+   what came in, what moved to other accounts, and every movement */
 function acctDetail(a){
-  const cur=esc(S.settings.cur), sym=esc(symOf(a)), r=rateOf(a), mk=today().slice(0,7);
+  const cur=esc(S.settings.cur), sym=esc(symOf(a)), r=rateOf(a), thisM=today().slice(0,7);
+  const mk=S.accMonth&&S.accMonth<=thisM?S.accMonth:(S.accMonth=thisM);
   const d=t=>txDelta(t,a.id,a.ccy,r);
   const txs=S.tx.filter(t=>t.acct===a.id||t.toAcct===a.id).map(t=>({t,date:t.date,at:t.at||0,v:d(t)})).filter(x=>Math.abs(x.v)>0.0001);
   const conv=v=>v/(a.ccy?r:1);
@@ -2335,25 +2337,49 @@ function acctDetail(a){
       name:`سداد آجل${t.credit.vendor?' لـ'+t.credit.vendor:''}`,credit:t.id})))];
   const all=[...txs,...other].sort((x,y)=>y.date.localeCompare(x.date)||y.at-x.at);
   const month=all.filter(x=>x.date.slice(0,7)===mk);
-  const inM=month.filter(x=>x.v>0).reduce((s,x)=>s+x.v,0), outM=month.filter(x=>x.v<0).reduce((s,x)=>s-x.v,0);
+  /* spending = expenses paid from this account, less refunds back into it; income separate;
+     transfers, debts and on-credit payments are money moving, not spending */
+  const spend=month.filter(x=>x.t&&(x.t.kind==='exp'||x.t.kind==='ref'));
+  const byCat={}; spend.forEach(x=>byCat[x.t.cat]=(byCat[x.t.cat]||0)-x.v);
+  const cats=Object.entries(byCat).filter(([,v])=>v>0.005).sort((p,q)=>q[1]-p[1]);
+  const E=cats.reduce((s,[,v])=>s+v,0);
+  const I=month.filter(x=>x.t&&x.t.kind==='inc').reduce((s,x)=>s+x.v,0);
+  const moveIn=month.filter(x=>!(x.t&&x.t.kind!=='trf')&&x.v>0).reduce((s,x)=>s+x.v,0);
+  const moveOut=month.filter(x=>!(x.t&&x.t.kind!=='trf')&&x.v<0).reduce((s,x)=>s-x.v,0);
+  const pE=all.filter(x=>x.t&&(x.t.kind==='exp'||x.t.kind==='ref')&&x.date.slice(0,7)===prevMonth(mk)).reduce((s,x)=>s-x.v,0);
   const label=x=>{
     if(!x.t) return {icon:x.debt?'↔':'🧾',name:x.name,sub:''};
     const t=x.t;
     if(t.kind==='trf'){ const o=acctOf(t.acct===a.id?t.toAcct:t.acct); return {icon:'⇄',name:t.acct===a.id?`تحويل لـ${o.name}`:`تحويل من ${o.name}`,sub:t.note||''}; }
     const c=catOf(t.cat); return {icon:c.emoji,name:t.note||c.name,sub:c.name+(t.kind==='ref'?' · مرتجع':'')};
   };
-  const shown=all.slice(0,40);
-  return `<div class="worth"><div class="cap">${a.emoji} ${esc(a.name)}</div>
+  const shown=month;
+  const kv=(l,v,c)=>`<div class="kv" style="padding:5px 0"><span>${l}</span><b class="num" dir="ltr" style="color:${c||'var(--chalk)'}">${v}</b></div>`;
+  return `<div class="worth"><div class="cap">${a.emoji} ${esc(a.name)} — الرصيد دلوقتي</div>
       <div class="v">${money(balance(a.id))}<span class="cur">${sym}</span></div>
-      <div class="sub">${a.ccy?`≈ <span class="num">${money0(balanceBase(a.id))}</span> ${cur} · `:''}الشهر ده: دخل <span class="num" dir="ltr">+${money0(inM)}</span> · خرج <span class="num" dir="ltr">−${money0(outM)}</span></div></div>
+      ${a.ccy?`<div class="sub">≈ <span class="num">${money0(balanceBase(a.id))}</span> ${cur}</div>`:''}</div>
+    <div class="mnav"><button id="amNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
+      <span class="lbl">${monthLabel(mk)}</span><button id="amPrev" aria-label="قبله">›</button></div>
+    <div class="card"><h3>صرفت من ${esc(a.name)} <span style="font-size:15px">${money(E)} ${sym}</span></h3>
+      ${cats.length?cats.map(([id,v])=>{ const c=catOf(id); return `<div class="brow"${tone(c)}>
+        <div class="top"><span class="l"><em style="font-style:normal">${c.emoji}</em><span class="t">${esc(c.name)}</span>
+          <span class="pct">${(v/E*100).toFixed(0)}%</span></span><span class="r">${money(v)}</span></div>
+        <div class="bar"><i style="width:${v/cats[0][1]*100}%"></i></div></div>`; }).join('')
+        :`<div style="font-size:13px;color:var(--dim)">مفيش مصاريف من الحساب ده في ${monthLabel(mk)}.</div>`}
+      ${pE>0&&E>0?`<div class="foot">${E>=pE?'أكتر':'أقل'} من ${monthLabel(prevMonth(mk))} بـ <b>${money0(Math.abs(E-pE))}</b> ${sym} (كان ${money0(pE)})</div>`:''}
+      <div class="perf" style="margin:10px 0 4px"></div>
+      ${kv('دخل نزل فيه',`+${money0(I)}`,'var(--mint)')}
+      ${moveIn?kv('دخل من تحويلات وسلف',`+${money0(moveIn)}`,'var(--dim)'):''}
+      ${moveOut?kv('خرج لتحويلات وسلف (مش مصاريف)',`−${money0(moveOut)}`,'var(--dim)'):''}
+      ${credits().some(t=>t.acct===a.id&&t.date.slice(0,7)===mk)?'<div style="font-size:11.5px;color:var(--dim);margin-top:4px">المشتريات بالآجل مش داخلة هنا لحد ما تتدفع.</div>':''}</div>
     <div class="row2" style="margin-top:12px"><button class="ghost" id="accEdit" style="margin:0">✎ تعديل الحساب</button>
       ${a.ccy?`<button class="ghost" id="accFx" style="margin:0">💱 تحويل عملة</button>`:a.type==='cash'?`<button class="ghost" id="accRecon" style="margin:0">عدّ الفلوس</button>`:'<span></span>'}</div>
-    <div class="sec"><h2>آخر الحركات ${all.length>40?`<span style="font-size:12px;font-weight:500;color:var(--dim)">آخر 40 من ${all.length}</span>`:''}</h2></div>
+    <div class="sec"><h2>حركات ${monthLabel(mk)} <span style="font-size:12px;font-weight:500;color:var(--dim)">${month.length}</span></h2></div>
     ${shown.length?`<div class="list">${shown.map(x=>{ const l=label(x);
       return `<button class="item" ${x.t?`data-atx="${x.t.id}"`:x.debt?`data-adebt="${x.debt}"`:`data-acr="${x.credit}"`}><em>${l.icon}</em>
         <span class="nm">${esc(l.name)}<small>${dayLabel(x.date)}${l.sub?' · '+esc(l.sub):''}</small></span>
         <span class="hint" dir="ltr" style="color:${x.v>=0?'var(--mint)':'var(--chalk)'}">${x.v>=0?'+':'−'}${money(Math.abs(x.v))}</span></button>`;}).join('<div class="perf"></div>')}</div>`
-      :`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حركات على الحساب ده لسه.</div></div>`}`;
+      :`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حركات على الحساب ده في ${monthLabel(mk)}.</div></div>`}`;
 }
 function walDue(){
   const cur=esc(S.settings.cur);
@@ -2661,6 +2687,8 @@ function bindWal(){
   if(g('accEdit')) g('accEdit').onclick=()=>acctSheet(S.settings.walFilter);
   if(g('accFx')) g('accFx').onclick=()=>fxSheet({from:S.settings.walFilter});
   if(g('accRecon')) g('accRecon').onclick=()=>reconSheet(S.settings.walFilter);
+  if(g('amPrev')) g('amPrev').onclick=()=>{ S.accMonth=prevMonth(S.accMonth); renderWal(); };
+  if(g('amNext')) g('amNext').onclick=()=>{ S.accMonth=nextMonth(S.accMonth); renderWal(); };
   if(g('doRecon')) g('doRecon').onclick=()=>reconSheet(null);
   if(g('addPlan')) g('addPlan').onclick=()=>planSheet(null);
   if(g('addDebt')) g('addDebt').onclick=()=>debtSheet(null);
