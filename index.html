@@ -606,6 +606,9 @@ nav button.fab.on svg{width:25px;height:25px;padding:4px 16px;margin-top:0;borde
 <script>
 'use strict';
 
+/* the app's version — must match the number in sw.js (a test checks) */
+const APP_VER=46;
+
 /* ═══════ storage ═══════ */
 const Store = (() => {
   const NAME='masareef', VER=5,
@@ -3420,7 +3423,13 @@ function renderSet(){
         ${persisted===true?'<br>المتصفح متعهّد ميمسحش البيانات لوحده.'
           :persisted===false?'<br>المتصفح ممكن يمسح البيانات لو الموبايل اتملى — ثبّت التطبيق على الشاشة الرئيسية وخُد نسخة احتياطية بانتظام.':''}
       </div></div>
+    <div class="sec"><h2>التطبيق</h2><div class="list">
+      <button class="item" id="updBtn"><em>🔄</em><span class="nm">حدّث التطبيق دلوقتي<small id="updSt">النسخة ${APP_VER}</small></span><span class="chev">‹</span></button>
+    </div></div>
     <div style="height:12px"></div>`;
+  $('#updBtn').onclick=forceUpdate;
+  checkUpdate().then(v=>{ const e=$('#updSt'); if(e&&v>APP_VER) e.innerHTML=`النسخة ${APP_VER} · <b style="color:var(--brand)">فيه نسخة أحدث (${v}) — دوس هنا</b>`;
+    else if(e&&v) e.textContent=`النسخة ${APP_VER} · دي آخر نسخة`; });
 
   $('#modeSeg').querySelectorAll('[data-mode]').forEach(x=>x.onclick=async()=>{
     S.settings.mode=x.dataset.mode; await saveSettings();
@@ -3723,6 +3732,23 @@ async function wipe(){
   S.tx=[]; S.recons=[]; S.recur=recur;
   renderSet(); renderRail(); renderQuick(); renderAccts(); toast('اتمسحت كل الحركات');
 }
+
+/* the newest version on the site (read from sw.js, skipping every cache), or 0 when offline */
+async function checkUpdate(){
+  try{ const t=await (await fetch('sw.js',{cache:'no-store'})).text(); const m=t.match(/masareef-v(\d+)/); return m?+m[1]:0; }
+  catch(e){ return 0; }
+}
+/* fetch the newest app now: refresh the service worker, drop the saved copy, reload. Data is untouched (it's in IndexedDB) */
+async function forceUpdate(){
+  if(navigator.onLine===false) return toast('محتاج نت علشان يجيب التحديث');
+  toast('بيجيب آخر نسخة…');
+  try{ const r=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration(); if(r) await r.update(); }catch(e){}
+  try{ for(const k of await caches.keys()) await caches.delete(k); }catch(e){}
+  location.reload();
+}
+/* a newer version is out but this phone still runs the old one: say so once per version */
+setTimeout(async()=>{ const v=await checkUpdate(); if(v>APP_VER && S.settings.updNag!==v){
+  S.settings.updNag=v; saveSettings(); toast(`فيه تحديث جديد للتطبيق`,forceUpdate,'حدّث'); } },4000);
 
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
