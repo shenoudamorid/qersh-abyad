@@ -2297,7 +2297,7 @@ function walAcc(){
   const strip=`<div class="strip" id="walF" style="padding:12px 0 0;margin:0 calc(-1 * var(--pad));padding-inline:var(--pad)">${chips}</div>`;
   const row=a=>{ const b=balance(a.id);
     const g=a.ccy?fxGain(a,S.tx,rateOf(a)):null;
-    return `<button class="item" data-acc="${a.id}"><em${tone(a)}>${a.emoji}</em>
+    return `<button class="item" data-wf="${a.id}"><em${tone(a)}>${a.emoji}</em>
         <span class="nm">${esc(a.name)}<small>${a.ccy?`≈ ${money0(balanceBase(a.id))} ${cur} · سعر ${rateOf(a)}${Math.abs(g.gain)>=1?` · <b style="color:${g.gain>=0?'var(--mint)':'var(--red)'}">${g.gain>=0?'زادت':'قلّت'} ${money0(Math.abs(g.gain))}</b>`:''}`:a.type==='cash'?'كاش':'بنك / كارت'}</small></span>
         <span class="hint" style="color:${b>=0?'var(--chalk)':'var(--red)'};font-size:14px">${balTxt(a)}</span>
         <span class="chev">‹</span></button>`; };
@@ -2320,7 +2320,8 @@ function walAcc(){
     ${lb.length?`<div class="list" style="margin-top:14px">${lb.map(row).join('<div class="perf"></div>')}</div>`:''}
     ${lf.length?`${lb.length?'<div class="sec"><h2>فلوس بعملات تانية</h2></div>':'<div style="height:14px"></div>'}<div class="list">${lf.map(row).join('<div class="perf"></div>')}</div>
       <div style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.7">القيمة بالجنيه بتتحسب بالسعر اللي في الإعدادات ← العملات. «زادت / قلّت» = الفرق بين قيمتها دلوقتي واللي دفعته فيها.</div>`:''}
-    ${!list.length?`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حسابات هنا.</div></div>`:''}
+    ${!list.length?`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حسابات هنا.</div></div>`
+      :`<div style="font-size:12px;color:var(--dim);margin-top:8px;text-align:center">دوس على أي حساب تشوف صرفت منه كام وحركاته</div>`}
     ${tail}`;
 }
 /* one account: its balance, and for the month picked — what was spent from it by category,
@@ -2679,7 +2680,7 @@ function bindWal(){
   if(g('addAcc')) g('addAcc').onclick=()=>acctSheet(null);
   if(g('addFx')) g('addFx').onclick=()=>acctSheet(null,{fx:true});
   /* accounts tab filter: all / cash / bank / currencies / one account — remembered */
-  b.querySelectorAll('[data-wf]').forEach(x=>x.onclick=async()=>{ S.settings.walFilter=x.dataset.wf; renderWal(); await saveSettings();
+  b.querySelectorAll('[data-wf]').forEach(x=>x.onclick=async()=>{ S.settings.walFilter=x.dataset.wf; S.accMonth=null; renderWal(); $('#v-wal').scrollTop=0; await saveSettings();
     const sel=b.querySelector('[data-wf][aria-pressed="true"]'); if(sel) sel.scrollIntoView({block:'nearest',inline:'center'}); });
   b.querySelectorAll('[data-atx]').forEach(x=>x.onclick=()=>editTx(x.dataset.atx));
   b.querySelectorAll('[data-adebt]').forEach(x=>x.onclick=()=>debtSheet(x.dataset.adebt));
