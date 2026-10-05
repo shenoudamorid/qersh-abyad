@@ -497,3 +497,10 @@ test('accounts in another currency', () => {
   // a base amount landing in a foreign account without its own figure converts at today's rate
   assert.equal(L.txDelta({ kind: 'inc', acct: 'usd', amount: 500 }, 'usd', 'USD', 50), 10);
 });
+
+test('app version matches the service worker cache', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  assert.equal(html.match(/const APP_VER=(\d+);/)[1], sw.match(/masareef-v(\d+)/)[1]);
+});
