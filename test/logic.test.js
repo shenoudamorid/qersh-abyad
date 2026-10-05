@@ -532,3 +532,10 @@ test('spending plan: usual month, limits, warnings', () => {
   assert.equal(e.estimate, true); assert.equal(Math.round(e.rows[0].avg), 3100); assert.equal(e.hot.length, 0);
   assert.equal(L.spendingPlan([], cats, { by: { food: 700 }, elapsed: 3, days: 31 }).rows[0].suggested, 0);
 });
+
+test('notes: invisible direction marks are dropped', () => {
+  assert.equal(L.cleanText('‏ فطيرة فراخ'), 'فطيرة فراخ');
+  assert.equal(L.cleanText('‫كشري‬  '), 'كشري');
+  assert.equal(L.norm('‏كشري'), L.norm('كشري'));
+  assert.equal(L.cleanText(null), '');
+});

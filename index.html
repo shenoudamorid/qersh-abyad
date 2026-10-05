@@ -617,7 +617,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=48;
+const APP_VER=49;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -901,6 +901,13 @@ function applyMode(){
   }
   sortTx();
   await migrateRental();
+  /* once: drop the invisible direction marks the iPhone keyboard left in notes */
+  if(!S.settings.cleanNotes){
+    const dirty=S.tx.filter(t=>t.note&&cleanText(t.note)!==t.note);
+    for(const t of dirty) t.note=cleanText(t.note);
+    if(dirty.length) await Store.batch(dirty.map(t=>['put','tx',t]));
+    S.settings.cleanNotes=1; await saveSettings();
+  }
   /* once: re-label booking payments so the earliest one is the deposit (an edited payment used to move first) */
   if(!S.settings.payLabels){
     for(const st of S.stays) if((st.pays||[]).some(p=>p.tx)){ await syncStayTx(st,stayMoney(st)); await Store.put('stay',st); }
@@ -1285,6 +1292,7 @@ $('#quick').addEventListener('click',async e=>{
 
 async function commit(t,onUndo){
   const rec={id:uid(),at:Date.now(),...t};
+  if(rec.note!=null) rec.note=cleanText(rec.note);
   await Store.put('tx',rec);
   /* budgets are personal: a rental expense never pushes them */
   const mk=mKey(rec.date), c=rec.kind==='exp'&&!(hasBiz()&&isBiz(rec))?catOf(rec.cat):null;
@@ -1434,7 +1442,7 @@ $('#noteBtn').addEventListener('click',()=>{
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="fOk">تم</button></div>`);
   $('#fOk').onclick=()=>{
-    S.draft.note=$('#fNote').value.trim();
+    S.draft.note=cleanText($('#fNote').value);
     /* no chip tapped yet → let the note pick the category («شاورما» → أكل وشرب) */
     const g=S.draft.kind!=='trf'&&!S.draft.catPicked&&guessCat(S.draft.note,catsOf(S.draft.kind));
     if(g){ if(!S.draft.catGuessed) S.draft.prevCat=S.draft.cat; S.draft.cat=g.id; S.draft.catGuessed=true; renderCats(); }
@@ -1512,7 +1520,7 @@ $('#nlBtn').addEventListener('click',()=>{
     const p=parseEntry($('#nlIn').value);
     if(!p){ $('#nlIn').focus(); return; }
     closeSheet();
-    await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:p.note,date:today()});
+    await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today()});
   };
 });
 
@@ -1755,7 +1763,7 @@ function editTx(id){
     if(fxA){ const r=t.rate||rateOf(fxA); t.ccy=fxA.ccy; t.raw=a; t.rate=r; amt=a*r; }
     else if(t.ccy && a!==t.amount){ delete t.ccy; delete t.raw; delete t.rate; }
     Object.assign(t,{amount:amt,date:$('#eDate').value||t.date,kind:k,acct:$('#eAcct').value,
-      note:$('#eNote').value.trim()});
+      note:cleanText($('#eNote').value)});
     const catBefore=t.cat;
     if(k==='trf'){ t.toAcct=$('#eTo').value; delete t.cat; }
     else { t.cat=$('#eCat').value; delete t.toAcct; }
@@ -1895,7 +1903,7 @@ function monthStory({mk,sc,E,I,pE,B,isThis,dLeft,res,exp,ref,personal}){
   if(personal&&isThis&&B>0){ const left=B-E-(res||0);
     out.push(left>=0?`فاضل من ميزانيتك ${n(left)}، يعني تقدر تصرف حوالي ${n(left/Math.max(1,dLeft))} في اليوم لآخر الشهر.`
       :`عدّيت ميزانية الشهر بـ ${n(-left)}.`); }
-  if(pE>0&&E>0&&!isThis){ const d=E-pE; out.push(`صرفت ${d>=0?'أكتر':'أقل'} من ${monthLabel(prevMonth(mk))} بـ ${n(Math.abs(d))}.`); }
+  if(pE>0&&E>0&&!isThis&&inMonth(prevMonth(mk),'exp',sc).length>=5){ const d=E-pE; out.push(`صرفت ${d>=0?'أكتر':'أقل'} من ${monthLabel(prevMonth(mk))} بـ ${n(Math.abs(d))}.`); }
   if(!out.length) return '';
   return `<div class="card story"><h3>الخلاصة</h3>${out.map(x=>`<p>${x}</p>`).join('')}</div>`;
 }
@@ -1932,10 +1940,13 @@ function renderRep(){
   let cmp='مفيش شهر سابق للمقارنة';
   const pm=prevMonth(mk), upTo=isThis?`${pm}-${String(Math.min(now.getDate(),dim(+pm.slice(0,4),+pm.slice(5)))).padStart(2,'0')}`:null;
   const pSame=isThis?inMonth(pm,'exp',sc).filter(t=>t.date<=upTo).reduce((a,t)=>a+t.amount,0)-inMonth(pm,'ref',sc).filter(t=>t.date<=upTo).reduce((a,t)=>a+t.amount,0):pE;
-  if(pSame>0){
+  /* a month the app barely saw (a handful of entries, e.g. one bill logged later) isn't a fair yardstick */
+  const tracked=inMonth(pm,'exp',sc).length>=5;
+  if(pSame>0&&tracked){
     const p=((E-pSame)/pSame)*100, up=p>=0;
     cmp=`المصاريف <span class="${up?'up':'down'}">${up?'▲':'▼'} <b>${Math.abs(p).toFixed(0)}%</b></span> عن ${isThis?`نفس الأيام من ${monthLabel(pm)}`:monthLabel(pm)} (<span class="num">${money0(pSame)}</span>)`;
-  }else if(isThis&&pE>0) cmp=`${monthLabel(pm)} كله كان <span class="num">${money0(pE)}</span>`;
+  }else if(isThis&&pE>0&&tracked) cmp=`${monthLabel(pm)} كله كان <span class="num">${money0(pE)}</span>`;
+  else if(pE>0&&!tracked) cmp=`${monthLabel(pm)} مش متسجل فيه كفاية للمقارنة`;
   const net=I-E;
   const hero = I>0
     ? `<div class="hero"><div class="cap">اللي فضل معاك الشهر ده${qh('net')}</div>
@@ -2269,7 +2280,8 @@ function habitPlan(){
   const months=[];
   for(let k=prevMonth(thisM),i=0;i<12&&months.length<6&&k>=sm;i++,k=prevMonth(k)){
     if(k===sm && +start.slice(8)>3) break;
-    const by=catTotals(k,sc); if(Object.values(by).some(v=>v>0)) months.unshift({mk:k,by});
+    /* months with only a few entries weren't really tracked — they'd drag the usual down */
+    const by=catTotals(k,sc); if(inMonth(k,'exp',sc).length>=5 && Object.values(by).some(v=>v>0)) months.unshift({mk:k,by});
   }
   return spendingPlan(months,catsOf('exp'),{by:catTotals(thisM,sc),elapsed:now.getDate(),days:dim(now.getFullYear(),now.getMonth()+1)});
 }
@@ -3745,9 +3757,17 @@ function recSheet(id){
     const fresh=nf==='month'
       ? {lastMonth:posted(mKey(today()))?mKey(today()):''}
       : {lastDate:'',since:posted(today())?iso(addDays(new Date(),1)):today()};
+    /* what it already posted this month can follow the change (category, amount, account, note) */
+    const mine=id?S.tx.filter(t=>t.rec===id&&mKey(t.date)===mKey(today())):[];
+    const differs=t=>t.cat!==v.cat||t.acct!==v.acct||t.kind!==v.kind||(!t.ccy&&Math.abs(t.amount-a)>0.005)||(t.note||'')!==v.note;
+    let moved=0;
+    if(mine.some(differs) && confirm(`البند ده اتسجل خلاص ${mine.length===1?'مرة':mine.length+' مرات'} الشهر ده.\nتغيّر كمان اللي اتسجل بالتعديل الجديد؟`)){
+      for(const t of mine){ Object.assign(t,{cat:v.cat,acct:v.acct,kind:v.kind,note:v.note}); if(!t.ccy) t.amount=a; moved++; }
+      await Store.batch(mine.map(t=>['put','tx',t]));
+    }
     if(id){ if(nf!==f) Object.assign(r,fresh); Object.assign(r,v); await Store.put('recur',r); }
     else{ const nr={id:uid(),...v,...fresh}; S.recur.push(nr); await Store.put('recur',nr); }
-    closeSheet(); await runRecurring(); renderSet(); renderRail(); toast('تم');
+    closeSheet(); await runRecurring(); renderSet(); renderRail(); renderLog(); toast(moved?'تم — واتعدّل اللي اتسجل الشهر ده':'تم');
   };
   const d=$('#rDel');
   if(d) d.onclick=async()=>{ await Store.del('recur',id); S.recur=S.recur.filter(x=>x.id!==id);

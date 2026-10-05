@@ -308,8 +308,10 @@ function dueItems({debts=[],plans=[],rents=[],stays=[],credits=[]},now,days=7){
 const AR_DIGITS={'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9',
                  '۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9'};
 const normDigits=s=>s.replace(/[٠-٩۰-۹]/g,d=>AR_DIGITS[d]);
+/* direction marks the iPhone keyboard slips in (invisible, but they break matching words) */
+const cleanText=x=>String(x??'').replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g,'').replace(/\s+/g,' ').trim();
 function norm(x){
-  return normDigits(String(x||''))
+  return normDigits(cleanText(x))
     .replace(/[ً-ْٰـ]/g,'')
     .replace(/[أإآٱ]/g,'ا')
     .replace(/ة/g,'ه')
@@ -1039,4 +1041,4 @@ if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextM
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,niceRound,spendingPlan,CAT_WORDS,checkBackup,repairBackup};
+  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup};
