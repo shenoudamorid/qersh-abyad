@@ -2526,8 +2526,20 @@ function acctDetail(accs,row){
   const other=[...S.debts.flatMap(x=>debtFlows(x).filter(m=>ids.has(m.acct)).map(m=>({date:m.date,at:m.at||0,v:conv(m.amount),
       name:`سلف — ${x.person}`,debt:x.id}))),
     ...credits().flatMap(t=>creditFlows(t).filter(m=>ids.has(m.acct)).map(m=>({date:m.date,at:m.at||0,v:conv(m.amount),
-      name:`سداد آجل${t.credit.vendor?' لـ'+t.credit.vendor:''}`,credit:t.id})))];
-  const all=[...txs,...other].sort((x,y)=>y.date.localeCompare(x.date)||y.at-x.at);
+      name:`سداد آجل${t.credit.vendor?' لـ'+t.credit.vendor:''}`,credit:t.id,ct:t})))];
+  /* personal money, one rental unit, or everything — balances stay whole, the month's money is filtered */
+  const units=allUnits().filter(u=>!u.archived);
+  let sp=hasBiz()?(S.settings.accScope||'all'):'all';
+  if(sp!=='all'&&sp!=='mine'&&!units.some(u=>u.id===sp)) sp='all';
+  const ofUnit=t=>isBiz(t)&&(t.unitId||'')===sp;
+  const keep=x=>sp==='all'?true
+    :x.t?(x.t.kind==='trf'?sp==='mine':sp==='mine'?!isBiz(x.t):ofUnit(x.t))
+    :x.ct?(sp==='mine'?!isBiz(x.ct):ofUnit(x.ct))
+    :sp==='mine';
+  const all=[...txs,...other].filter(keep).sort((x,y)=>y.date.localeCompare(x.date)||y.at-x.at);
+  const spName=sp==='all'?'':sp==='mine'?' — على نفسك':` — على ${esc(unitName(sp))}`;
+  const scopeSeg=hasBiz()?`<div class="seg" id="accScope" style="margin:0 0 12px">${[['mine','شخصي'],...units.map(u=>[u.id,'🏘 '+esc(u.name)]),['all','الكل']]
+    .map(([k,l])=>`<button data-asc="${k}" aria-pressed="${sp===k}">${l}</button>`).join('')}</div>`:'';
   const month=all.filter(x=>x.date.slice(0,7)===mk);
   /* spending = expenses paid from this account, less refunds back into it; income separate;
      transfers, debts and on-credit payments are money moving, not spending */
@@ -2554,7 +2566,8 @@ function acctDetail(accs,row){
     ${one?'':`<div class="list" style="margin-top:12px">${accs.map(row).join('<div class="perf"></div>')}</div>`}
     <div class="mnav"><button id="amNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
       <span class="lbl">${monthLabel(mk)}</span><button id="amPrev" aria-label="قبله">›</button></div>
-    <div class="card"><h3><span>صرفت من ${esc(a.name)}${qh('acct')}</span><span style="font-size:15px">${money(E)} ${sym}</span></h3>
+    ${scopeSeg}
+    <div class="card"><h3><span>صرفت من ${esc(a.name)}${spName}${qh('acct')}</span><span style="font-size:15px">${money(E)} ${sym}</span></h3>
       ${cats.length?cats.map(([id,v])=>{ const c=catOf(id); return `<div class="brow"${tone(c)}>
         <div class="top"><span class="l"><em style="font-style:normal">${c.emoji}</em><span class="t">${esc(c.name)}</span>
           <span class="pct">${(v/E*100).toFixed(0)}%</span></span><span class="r">${money(v)}</span></div>
@@ -2890,6 +2903,7 @@ function bindWal(){
   if(g('accEdit')) g('accEdit').onclick=()=>acctSheet(oneId());
   if(g('accFx')) g('accFx').onclick=()=>fxSheet({from:oneId()});
   if(g('accRecon')) g('accRecon').onclick=()=>reconSheet(oneId());
+  b.querySelectorAll('[data-asc]').forEach(x=>x.onclick=async()=>{ S.settings.accScope=x.dataset.asc; renderWal(); await saveSettings(); });
   if(g('amPrev')) g('amPrev').onclick=()=>{ S.accMonth=prevMonth(S.accMonth); renderWal(); };
   if(g('amNext')) g('amNext').onclick=()=>{ S.accMonth=nextMonth(S.accMonth); renderWal(); };
   if(g('doRecon')) g('doRecon').onclick=()=>reconSheet(null);
