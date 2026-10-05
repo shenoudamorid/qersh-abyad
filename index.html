@@ -331,6 +331,16 @@ nav button.fab.on svg{width:25px;height:25px;padding:4px 16px;margin-top:0;borde
 .sheet h2{margin:0 0 6px;font-size:18px;font-weight:700}
 /* close button: stays at the top corner while the sheet scrolls */
 .shXw{position:sticky;top:0;height:0;z-index:3}
+/* «؟» next to a title: what this number means */
+.qh,.card h3 .qh{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;margin-inline-start:6px;
+    border:1.3px solid currentColor;font-size:12px;font-weight:700;opacity:.55;vertical-align:middle;color:inherit;background:transparent;padding:0;flex:none}
+.card h3>span{display:inline-flex;align-items:center}
+details.more{margin-top:12px}
+details.more>summary{list-style:none;cursor:pointer;text-align:center;padding:13px;border-radius:var(--r);
+    border:1px dashed color-mix(in srgb,var(--dim) 45%,transparent);color:var(--dim);font-weight:600;font-size:14px}
+details.more>summary::-webkit-details-marker{display:none}
+.story p{margin:0 0 8px;font-size:14px;line-height:1.8}
+.story p:last-child{margin:0}
 .shX{position:absolute;left:0;top:-12px;width:34px;height:34px;border-radius:50%;background:var(--ink3);
      color:var(--dim);font-size:15px;line-height:34px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .sheet .lede{margin:0 0 15px;font-size:12.5px;color:var(--dim);line-height:1.65}
@@ -607,7 +617,7 @@ nav button.fab.on svg{width:25px;height:25px;padding:4px 16px;margin-top:0;borde
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=47;
+const APP_VER=48;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1386,7 +1396,7 @@ $('#mtdBox').addEventListener('click',()=>{
   const biz=hasBiz()?incNet(mk,'biz')-expNet(mk,'biz'):0;
   const d=now.getDate(), D=dim(now.getFullYear(),now.getMonth()+1);
   const res=PRO()?reservedThisMonth():0;
-  const pace=d>0?E/d*D:0;
+  const pace=monthPace(mk,E);
   sheet(`<h2>${monthLabel(mk)}</h2>
     <p class="lede">اليوم ${d} من ${D}.</p>
     ${PRO()?`<div class="kv big"><span>إجمالي فلوسك دلوقتي</span><b>${money(netWorth())} ${cur}</b></div><div class="perf"></div>`:''}
@@ -1398,7 +1408,7 @@ $('#mtdBox').addEventListener('click',()=>{
       <div class="perf"></div><div class="kv big"><span>فاضل</span><b style="color:${B-E-res>=0?'var(--mint)':'var(--red)'}">${money(B-E-res)} ${cur}</b></div>
       <div class="perf"></div><div class="kv"><span>متاح لكل يوم فاضل</span><b>${money0((B-E-res)/(D-d+1))} ${cur}</b></div>`:''}
     <div class="perf"></div>
-    <div class="kv"><span>لو كمّلت كده، هتصرف في الشهر كله حوالي</span><b>${money0(pace)} ${cur}</b></div>
+    ${pace!=null?`<div class="kv"><span>متوقع الشهر يقفل على حوالي</span><b>${money0(pace)} ${cur}</b></div>`:''}
     ${hasBiz()?`<div class="perf"></div><div class="kv"><span>🏘 الإيجارات الشهر ده (اللي اتحصّل − مصاريفها)</span><b style="color:${biz>=0?'var(--mint)':'var(--red)'}">${biz>=0?'+':''}${money(biz)} ${cur}</b></div>
       <div style="font-size:12px;color:var(--dim);line-height:1.7;margin-top:6px">الأرقام اللي فوق شخصية بس — فلوس الإيجارات ومصاريف الوحدات مش داخلة في الميزانية.</div>`:''}
     <div class="acts"><button class="no" onclick="closeSheet()">تمام</button></div>`);
@@ -1807,6 +1817,89 @@ function anomalies(mk){
   return out.sort((a,b)=>b.pct-a.pct).slice(0,3);
 }
 
+/* ═══════ «؟»: what a number means, in plain words and with the user's own figures ═══════ */
+const qh=k=>`<button type="button" class="qh" data-help="${k}" aria-label="يعني إيه؟">؟</button>`;
+function helpCtx(){
+  const mk=S.repMonth||today().slice(0,7), sc=hasBiz()?(S.repScope||'mine'):'all', cur=S.settings.cur;
+  return {mk,sc,cur,E:expNet(mk,sc),I:incNet(mk,sc),B:budgetFor(mk),m:monthLabel(mk),n:v=>`<b class="num">${money0(v)}</b> ${esc(cur)}`};
+}
+const HELP={
+  net:{t:'اللي فضل معاك الشهر ده',b:c=>`<p>ده <b>دخلك</b> في ${c.m} ناقص <b>مصاريفك</b> فيه.</p>
+    <p>عندك: دخل ${c.n(c.I)} − مصاريف ${c.n(c.E)} = ${c.n(c.I-c.E)}.</p>
+    <p>${c.I-c.E>=0?'موجب يعني صرفت أقل من اللي دخلك، والفرق ده اللي تقدر تحوّشه.':'سالب يعني صرفت أكتر من اللي دخلك، يعني صرفت من فلوس كانت معاك قبل كده.'}</p>
+    <p style="color:var(--dim)">ده <b>مش رصيدك</b>. رصيدك (الفلوس اللي معاك فعلاً) في المحفظة.${hasBiz()?' والأرقام دي من غير فلوس الشقة لو انت على «شخصي».':''}</p>`},
+  spent:{t:'إجمالي المصاريف',b:c=>`<p>كل اللي صرفته في ${c.m}: ${c.n(c.E)}. ولو رجّعت حاجة واسترديت فلوسها، ثمنها بيتخصم من هنا.</p>
+    <p style="color:var(--dim)">لما تسجّل دخل (مرتب مثلاً) هيظهر هنا «اللي فضل معاك» بدل الرقم ده.</p>`},
+  budget:{t:'الميزانية',b:c=>c.B>0?`<p>الميزانية = أقصى مبلغ عايز تصرفه في الشهر: ${c.n(c.B)}.</p>
+    <p>صرفت ${c.n(c.E)}، يعني ${c.E<=c.B?`فاضلك ${c.n(c.B-c.E)}`:`عدّيت بـ ${c.n(c.E-c.B)}`}.</p>
+    <p><b>«متاح في اليوم»</b> = اللي فاضل ÷ الأيام الباقية في الشهر. لو صرفت أقل النهاردة، المتاح بكرة بيزيد.</p>
+    <p style="color:var(--dim)">«متشال لمصاريف جاية» = مصاريف إنت كاتبها في «قادم» لسه هتدفعها الشهر ده، فالتطبيق بيشيلها من المتاح.</p>`
+    :`<p>الميزانية = أقصى مبلغ عايز تصرفه في الشهر. لما تحددها، التطبيق يقولك تقدر تصرف كام في اليوم، وينبهك وقت التسجيل لو قرّبت منها أو عدّيتها.</p>`},
+  habits:{t:'مصاريفك المعتادة',b:c=>`<p><b>المعتاد</b> = متوسط مصاريفك في الشهور اللي فاتت (لحد 6 شهور). يعني الشهر العادي بيكلّفك كام.</p>
+    <p><b>متوقع يقفل على</b> = اللي صرفته لحد النهاردة + باقي الشهر بنفس معدلك العادي. ده تخمين، مش رقم أكيد.</p>
+    <p><b>اقترح ميزانية</b>: بيحط لكل بند حد. البنود الأساسية (فواتير، إيجار) بالمعتاد، والكماليات أقل 10% علشان توفّر.</p>`},
+  cats:{t:'مصاريفك بالتصنيف',b:c=>`<p>كل مصاريف ${c.m} مقسّمة حسب نوعها (أكل، مواصلات، فواتير…).</p>
+    <p>النسبة = البند ده قد إيه من إجمالي مصاريفك. لو للبند ميزانية، الشريط بيوريك وصلت لفين منها، وبيبقى أحمر لو عدّيتها.</p>`},
+  inc:{t:'دخلك بالتصنيف',b:c=>`<p>دخلك في ${c.m} جه منين (مرتب، إيجار، عمولات…) وكل واحد قد إيه من الدخل.</p>`},
+  fv:{t:'أساسي وكماليات',b:c=>`<p><b>أساسي</b> = مصاريف ما ينفعش تستغنى عنها (إيجار، فواتير، أقساط).</p>
+    <p><b>كماليات</b> = الباقي (خروج، تسوق، أكل برا…). دي اللي تقدر تقلّلها لو عايز توفّر.</p>
+    <p style="color:var(--dim)">تقدر تغيّر أي تصنيف من «تعديل».</p>`},
+  acc:{t:'مصاريفك حسب الحساب',b:c=>`<p>صرفت كام من كل حساب (كاش، فيزا…) في ${c.m}.</p>
+    <p style="color:var(--dim)">التحويلات بين حساباتك مش مصاريف ومش داخلة هنا. علشان تشوف تفاصيل حساب واحد: المحفظة ← دوس على الحساب.</p>`},
+  recon:{t:'عدّ الفلوس',b:c=>`<p>عدّ الكاش اللي في إيدك واكتبه. التطبيق بيقارنه باللي <b>المفروض</b> يكون معاك حسب اللي سجلته.</p>
+    <p>لو فيه فرق، يبقى فيه حاجة نسيت تسجّلها، والتطبيق يقدر يسجّل الفرق ده بدالك.</p>`},
+  stats:{t:'أرقام صغيرة',b:c=>`<p><b>متوسط مصروف يومي</b> = مصاريف الشهر ÷ عدد الأيام اللي عدّت منه.</p>
+    <p><b>أيام فيها مصاريف</b> = كام يوم في الشهر سجلت فيه مصروف.</p>
+    <p><b>متوسط المصروف</b> = المصروف الواحد بيبقى قد إيه في المتوسط.</p>`},
+  daily:{t:'مصاريف يوم بيوم',b:()=>`<p>كل عمود يوم في الشهر، وطوله على قد اللي صرفته فيه. العمود الملوّن هو أكتر يوم صرفت فيه.</p>`},
+  top:{t:'أكبر مصاريف',b:()=>`<p>أغلى 5 حاجات صرفت عليها في الشهر.</p>`},
+  year:{t:'آخر ١٢ شهر',b:()=>`<p>لكل شهر عمودين: <b>مصاريف</b> و<b>دخل</b>. الشهور اللي عمود الدخل فيها أطول هي الشهور اللي حوّشت فيها.</p>`},
+  goals:{t:'أهداف الادخار',b:()=>`<p>حاجة عايز تحوّش لها (عربية، تجديد الشقة…). اكتب المبلغ المطلوب والتاريخ، وكل ما تحوّش سجّل.</p>
+    <p>التطبيق يقولك محتاج تحوّش كام في الشهر علشان توصل في ميعادك.</p>`},
+  biz:{t:'فلوس الإيجارات',b:()=>`<p><b>اللي وصلك</b> = الفلوس اللي دخلت جيبك فعلاً الشهر ده من الحجوزات والإيجار، ناقص مصاريف الشقة.</p>
+    <p><b>المفروض يدخل</b> = قيمة الليالي اللي اتسكنت الشهر ده والإيجار الشهري، حتى لو الفلوس لسه ما وصلتش.</p>
+    <p>مثال: ضيف دفع عربون في سبتمبر لحجز في أكتوبر. العربون في «اللي وصلك» بتاع سبتمبر، وقيمة الليالي في «المفروض» بتاع أكتوبر.</p>`},
+  worth:{t:'إجمالي فلوسك',b:()=>`<p>مجموع الرصيد اللي في كل حساباتك دلوقتي: كاش + بنك + محافظ. والعملات التانية بسعرها بالجنيه.</p>
+    <p>ده بيتغير مع كل مصروف أو دخل أو تحويل تسجّله. ولو مش مظبوط، اعمل «عدّ الفلوس».</p>`},
+  unit:{t:'مكسب كل وحدة',b:()=>`<p>لكل شقة: <b>المفروض يدخل</b> منها، و<b>اللي وصلك</b> فعلاً، و<b>مصاريفها</b> (المتعلّمة «تابع لوحدة»).</p>
+    <p>المكسب = الدخل ناقص مصاريفها، بالطريقتين.</p>`},
+  stays:{t:'دخل الحجوزات',b:()=>`<p>قيمة الليالي اللي اتسكنت الشهر ده بعد عمولة المنصة. الحجز اللي بيعدّي آخر الشهر بيتقسم على الشهرين بعدد لياليه.</p>
+    <p><b>متأجرة X% من الشهر</b> = كام ليلة اتأجرت من ليالي الشهر.</p>`},
+  acct:{t:'صرفت من الحساب ده',b:()=>`<p>المصاريف اللي اتدفعت من الحساب ده بس، في الشهر اللي مختاره، مقسّمة بالتصنيف.</p>
+    <p style="color:var(--dim)">التحويلات والسلف وسداد الآجل مش مصاريف، علشان كده ظاهرين في سطر لوحدهم.</p>`}
+};
+function helpSheet(k){
+  const h=HELP[k]; if(!h) return;
+  sheet(`<h2>${h.t}</h2><div class="story" style="margin-top:8px">${h.b(helpCtx())}</div>
+    <div class="acts"><button class="go" onclick="closeSheet()">فهمت</button></div>`);
+}
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-help]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation(); helpSheet(b.dataset.help); },true);
+
+/* where this month's personal spending is heading: what's spent plus the rest at the usual rate.
+   Without a usual month yet, a straight line once 10 days have passed; before that, nothing (null) */
+function monthPace(mk,E){
+  const now=new Date(), thisM=today().slice(0,7);
+  if(mk!==thisM) return E;
+  const p=habitPlan(); if(p.n) return Math.max(E,p.paceTotal);
+  return now.getDate()>=10?E/now.getDate()*dim(now.getFullYear(),now.getMonth()+1):null;
+}
+/* the month in a few plain sentences */
+function monthStory({mk,sc,E,I,pE,B,isThis,dLeft,res,exp,ref,personal}){
+  const cur=esc(S.settings.cur), n=v=>`<b class="num">${money0(v)}</b> ${cur}`, out=[];
+  if(I>0) out.push(`دخلك ${n(I)} وصرفت ${n(E)}، ${I-E>=0?`يعني فضل معاك ${n(I-E)}.`:`يعني صرفت أكتر من دخلك بـ ${n(E-I)}.`}`);
+  else if(E>0) out.push(`صرفت ${n(E)} ${isThis?'لحد النهاردة':'في الشهر ده'}.`);
+  const by={}; exp.forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amount); ref.forEach(t=>by[t.cat]=(by[t.cat]||0)-t.amount);
+  const top=Object.entries(by).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1])[0];
+  if(top&&E>0){ const c=catOf(top[0]); out.push(`أكتر حاجة صرفت عليها ${c.emoji} <b>${esc(c.name)}</b>: ${n(top[1])} (${Math.round(top[1]/E*100)}% من مصاريفك).`); }
+  if(personal&&isThis&&B>0){ const left=B-E-(res||0);
+    out.push(left>=0?`فاضل من ميزانيتك ${n(left)}، يعني تقدر تصرف حوالي ${n(left/Math.max(1,dLeft))} في اليوم لآخر الشهر.`
+      :`عدّيت ميزانية الشهر بـ ${n(-left)}.`); }
+  if(pE>0&&E>0&&!isThis){ const d=E-pE; out.push(`صرفت ${d>=0?'أكتر':'أقل'} من ${monthLabel(prevMonth(mk))} بـ ${n(Math.abs(d))}.`); }
+  if(!out.length) return '';
+  return `<div class="card story"><h3>الخلاصة</h3>${out.map(x=>`<p>${x}</p>`).join('')}</div>`;
+}
+
 /* ═══════ REPORTS ═══════ */
 function renderRep(){
   const mk=S.repMonth, cur=esc(S.settings.cur), thisM=today().slice(0,7);
@@ -1835,18 +1928,21 @@ function renderRep(){
     return bindRepNav();
   }
 
+  /* this month is compared with the same days of last month (1–5 against 1–5), not with all of it */
   let cmp='مفيش شهر سابق للمقارنة';
-  if(pE>0){
-    const p=((E-pE)/pE)*100, up=p>=0;
-    cmp=`المصاريف <span class="${up?'up':'down'}">${up?'▲':'▼'} <b>${Math.abs(p).toFixed(0)}%</b></span> عن ${monthLabel(prevMonth(mk))} (<span class="num">${money0(pE)}</span>)`;
-  }
+  const pm=prevMonth(mk), upTo=isThis?`${pm}-${String(Math.min(now.getDate(),dim(+pm.slice(0,4),+pm.slice(5)))).padStart(2,'0')}`:null;
+  const pSame=isThis?inMonth(pm,'exp',sc).filter(t=>t.date<=upTo).reduce((a,t)=>a+t.amount,0)-inMonth(pm,'ref',sc).filter(t=>t.date<=upTo).reduce((a,t)=>a+t.amount,0):pE;
+  if(pSame>0){
+    const p=((E-pSame)/pSame)*100, up=p>=0;
+    cmp=`المصاريف <span class="${up?'up':'down'}">${up?'▲':'▼'} <b>${Math.abs(p).toFixed(0)}%</b></span> عن ${isThis?`نفس الأيام من ${monthLabel(pm)}`:monthLabel(pm)} (<span class="num">${money0(pSame)}</span>)`;
+  }else if(isThis&&pE>0) cmp=`${monthLabel(pm)} كله كان <span class="num">${money0(pE)}</span>`;
   const net=I-E;
   const hero = I>0
-    ? `<div class="hero"><div class="cap">اللي فضل معاك الشهر ده</div>
+    ? `<div class="hero"><div class="cap">اللي فضل معاك الشهر ده${qh('net')}</div>
         <div class="big ${net>=0?'pos':'neg'}">${net>=0?'+':''}${money(net)}<span class="cur">${cur}</span></div>
         <div class="legs"><span>دخل <b>${money0(I)}</b></span><span>مصاريف <b>${money0(E)}</b></span></div>
         <div class="cmp">${cmp}</div></div>`
-    : `<div class="hero"><div class="cap">إجمالي المصاريف</div>
+    : `<div class="hero"><div class="cap">إجمالي المصاريف${qh('spent')}</div>
         <div class="big">${money(E)}<span class="cur">${cur}</span></div>
         <div class="cmp">${cmp}</div></div>`;
 
@@ -1862,13 +1958,13 @@ function renderRep(){
 
   const res=isThis&&PRO()?reservedThisMonth():0;
   const budCard = !personal?`<div class="card"><div class="foot" style="margin:0">الميزانية والتنبيهات بتتحسب على مصاريفك الشخصية بس — شوفها في «شخصي».</div></div>`
-    : B>0? `<div class="card"><h3>الميزانية<button id="bEdit">تعديل</button></h3>
+    : B>0? `<div class="card"><h3><span>الميزانية${qh('budget')}</span><button id="bEdit">تعديل</button></h3>
       <div class="bar tall${E>B?' over':''}"><i style="width:${Math.min(E/B*100,100)}%"></i></div>
       <div class="foot">صرفت <b>${money0(E)}</b> من <b>${money0(B)}</b> ${cur} — ${E<=B?`فاضل <b class="pos">${money0(B-E)}</b>`:`زيادة <b class="neg">${money0(E-B)}</b>`}
       ${res>0?`<br>متشال <b>${money0(res)}</b> ${cur} لمصاريف جاية`:''}
       ${isThis?`<br>${dLeft} يوم فاضل · متاح <b>${money0((B-E-res)/dLeft)}</b> ${cur} في اليوم`:''}
-      <br>لو كمّلت كده، هتصرف في الشهر كله حوالي <b>${money0(E/dPast*D)}</b> ${cur}</div></div>`
-    : `<div class="card"><h3>الميزانية</h3><div class="foot" style="margin:0">محددتش ميزانية شهرية.
+      ${monthPace(mk,E)!=null?`<br>متوقع الشهر يقفل على حوالي <b>${money0(monthPace(mk,E))}</b> ${cur}`:''}</div></div>`
+    : `<div class="card"><h3>الميزانية${qh('budget')}</h3><div class="foot" style="margin:0">محددتش ميزانية شهرية.
         <button id="bEdit" style="color:var(--brand);font-weight:600">حدّدها</button> وهتشوف «متاح النهاردة كام».</div></div>`;
 
   const mx=Math.max(I,E,1), ratio=I>0?E/I*100:0;
@@ -1886,7 +1982,7 @@ function renderRep(){
     let F=0,V=0;
     catsOf('exp').forEach(c=>{ const v=catNet(c.id); if(v>0){ if(c.fixed) F+=v; else V+=v; } });
     const tot=F+V;
-    if(tot>0) fv=`<div class="card"><h3>أساسي وكماليات<button id="fvEdit">تعديل</button></h3>
+    if(tot>0) fv=`<div class="card"><h3><span>أساسي وكماليات${qh('fv')}</span><button id="fvEdit">تعديل</button></h3>
       <div class="split"><i style="width:${F/tot*100}%;background:var(--iris)"></i><i style="width:${V/tot*100}%;background:var(--brand)"></i></div>
       <div class="splegend">
         <span><i class="sw" style="background:var(--iris)"></i>أساسي <b>${money0(F)}</b> <small style="color:var(--dim)">${(F/tot*100).toFixed(0)}%</small></span>
@@ -1900,7 +1996,7 @@ function renderRep(){
   if(E>0){
     const list=liveAccts().map(a=>({a,v:sum(exp.filter(t=>t.acct===a.id&&!t.credit))-sum(ref.filter(t=>t.acct===a.id))}))
                           .filter(x=>x.v>0).sort((x,y)=>y.v-x.v);
-    if(list.length) acc=`<div class="card"><h3>مصاريفك حسب الحساب</h3>
+    if(list.length) acc=`<div class="card"><h3>مصاريفك حسب الحساب${qh('acc')}</h3>
       ${list.map(({a,v})=>`<div class="brow">
         <div class="top"><span class="l"><em style="font-style:normal">${a.emoji}</em><span class="t">${esc(a.name)}</span>
           <span class="pct">${(v/E*100).toFixed(0)}%</span></span><span class="r">${money(v)}</span></div>
@@ -1932,25 +2028,33 @@ function renderRep(){
   const maxD=Math.max(...daily,1), logged=daily.filter(v=>v>0).length;
   const top5=[...exp].sort((a,b)=>b.amount-a.amount).slice(0,5);
 
-  $('#repBody').innerHTML = nav + hero + goalsCard() + anom + budCard + (personal&&isThis?habitsCard():'') + ie + fv + (PRO()?acc+reconCard(mk):'') + `
+  /* the essentials first; everything else waits behind «تفاصيل أكتر» */
+  const story=monthStory({mk,sc,E,I,pE,B,isThis,dLeft,res,exp,ref,personal});
+  const hasGoals=S.goals.length>0;
+  $('#repBody').innerHTML = nav + hero + story + anom + budCard + (personal&&isThis?habitsCard():'')
+    + (E>0?`<div class="card"><h3>مصاريفك بالتصنيف${qh('cats')}</h3>${breakdown(exp,ref,E,false)}</div>`:'')
+    + (hasGoals?goalsCard():'')
+    + `<details class="more" id="repMore"${S.repMore?' open':''}><summary>📊 تفاصيل أكتر ${S.repMore?'▴':'▾'}</summary>`
+    + (I>0?`<div class="card"><h3>دخلك بالتصنيف${qh('inc')}</h3>${breakdown(inc,null,I,true)}</div>`:'')
+    + fv + (PRO()?acc+reconCard(mk):'') + `
+    <div class="card" style="padding-bottom:4px;margin-bottom:0"><h3 style="margin:0">أرقام صغيرة${qh('stats')}</h3></div>
     <div class="stats">
       <div class="stat"><div class="v">${money0(E/dPast)}</div><div class="l">متوسط مصروف يومي</div></div>
       <div class="stat"><div class="v">${logged}<span style="font-size:13px;color:var(--dim)"> / ${D}</span></div><div class="l">أيام فيها مصاريف</div></div>
       <div class="stat"><div class="v">${exp.length}</div><div class="l">عدد المصاريف</div></div>
       <div class="stat"><div class="v">${exp.length?money0(sum(exp)/exp.length):0}</div><div class="l">متوسط المصروف</div></div>
     </div>
-    ${E>0?`<div class="card"><h3>مصاريفك بالتصنيف</h3>${breakdown(exp,ref,E,false)}</div>`:''}
-    ${I>0?`<div class="card"><h3>دخلك بالتصنيف</h3>${breakdown(inc,null,I,true)}</div>`:''}
-    ${E>0?`<div class="card"><h3>مصاريف يوم بيوم</h3>
+    ${E>0?`<div class="card"><h3>مصاريف يوم بيوم${qh('daily')}</h3>
       <div class="days">${daily.map(v=>`<i class="${v===maxD&&v>0?'hot':''}" style="height:${Math.max(v,0)/maxD*100}%"></i>`).join('')}</div>
       <div class="dayax"><span>1</span><span>${Math.ceil(D/2)}</span><span>${D}</span></div></div>`:''}
-    ${top5.length?`<div class="card"><h3>أكبر ${top5.length} مصاريف</h3><div class="roll" style="background:transparent">
+    ${top5.length?`<div class="card"><h3>أكبر ${top5.length} مصاريف${qh('top')}</h3><div class="roll" style="background:transparent">
       ${top5.map(t=>{const c=catOf(t.cat);return `<div class="row" style="padding:9px 0">
         <em${tone(c)}>${c.emoji}</em><span class="meta"><span class="nm">${esc(t.note||c.name)}</span>
         <span class="nt">${dayLabel(t.date)} · ${esc(acctOf(t.acct).name)}</span></span>
         <span class="val">${money(t.amount)}</span></div>`;}).join('<div class="perf"></div>')}
-      </div></div>`:''}` + (PRO()?yearCard(sc):'');
+      </div></div>`:''}` + (PRO()?yearCard(sc):'') + (hasGoals?'':goalsCard()) + `</details>`;
   bindRepNav();
+  const more=$('#repMore'); if(more) more.addEventListener('toggle',()=>{ S.repMore=more.open; more.querySelector('summary').textContent=`📊 تفاصيل أكتر ${more.open?'▴':'▾'}`; });
   const be=$('#bEdit'); if(be) be.onclick=budgetSheet;
   const fe=$('#fvEdit'); if(fe) fe.onclick=fixedSheet;
   const hp=$('#habPlan'); if(hp) hp.onclick=planBudgetSheet;
@@ -1973,11 +2077,11 @@ function repBiz(mk){
   const refunds=exp.filter(t=>t.refund).reduce((a,t)=>a+t.amount,0);
   if(!r.earned&&!r.collected&&!r.cost&&!sm.pending) return `<div class="empty"><div class="h">مفيش حركة إيجارات في ${monthLabel(mk)}</div>
     <div class="p">الحجوزات والعقود ومصاريف الوحدات بتظهر هنا لوحدها، بعيد عن فلوسك الشخصية.</div></div>`+yearCard('biz');
-  return `<div class="hero"><div class="cap">مكسب الإيجارات اللي في إيدك</div>
+  return `<div class="hero"><div class="cap">مكسب الإيجارات اللي في إيدك${qh('biz')}</div>
       <div class="big ${r.profit>=0?'pos':'neg'}">${r.profit>=0?'+':''}${money(r.profit)}<span class="cur">${cur}</span></div>
       <div class="legs"><span>وصلك <b>${money0(r.collected)}</b></span><span>مصاريف <b>${money0(r.cost)}</b></span>${sm.nights?`<span>ليالي <b>${sm.nights}</b></span>`:''}</div>
       <div class="cmp">المفروض يدخل <span class="num">${money0(r.earned)}</span> · المكسب المفروض <span class="num">${money0(r.profitEarned)}</span> ${cur}</div></div>
-    <div class="card"><h3>اللي وصلك مقابل المفروض يدخل</h3>
+    <div class="card"><h3>اللي وصلك مقابل المفروض يدخل${qh('biz')}</h3>
       <div class="kv"><span>المفروض يدخل الشهر ده${S.rents.length?' (الليالي + الإيجار الشهري)':' (الليالي اللي اتسكنت)'}</span><b>${money(r.earned)} ${cur}</b></div><div class="perf"></div>
       <div class="kv"><span>اللي وصلك فعلاً</span><b>${money(r.collected)} ${cur}</b></div><div class="perf"></div>
       <div class="kv"><span>المكسب المفروض</span>${pf(r.profitEarned)}</div><div class="perf"></div>
@@ -1997,7 +2101,7 @@ function repBiz(mk){
 const goalSaved=g=>(g.adds||[]).reduce((s,a)=>s+a.amount,0);
 function goalsCard(){
   const cur=esc(S.settings.cur);
-  return `<div class="card"><h3>أهداف الادخار <button id="addGoal">+ هدف</button></h3>
+  return `<div class="card"><h3><span>أهداف الادخار${qh('goals')}</span><button id="addGoal">+ هدف</button></h3>
     ${S.goals.length?S.goals.map((g,i)=>{
       const v=goalSaved(g), pct=Math.min(100,v/g.target*100), done=v>=g.target;
       let hint='';
@@ -2144,7 +2248,7 @@ function yearCard(sc){
   if(!data.some(d=>d.e||d.i)) return '';
   const nz=data.filter(d=>d.e>0);
   const avg=nz.length?nz.reduce((s,d)=>s+d.e,0)/nz.length:0;
-  return `<div class="card"><h3>آخر ١٢ شهر</h3>
+  return `<div class="card"><h3>آخر ١٢ شهر${qh('year')}</h3>
     <div class="yr">${data.map(d=>`<div class="mo${d.m===S.repMonth?' cur':''}">
       <i class="e" style="height:${Math.max(d.e,0)/max*100}%"></i><i class="i" style="height:${d.i/max*100}%"></i></div>`).join('')}</div>
     <div class="yrax">${data.map((d,i)=>`<span>${i%2===0?AR_M3[+d.m.slice(5)-1]:''}</span>`).join('')}</div>
@@ -2177,7 +2281,7 @@ function habitsCard(){
   const line=r=>{ const c=catOf(r.id); return `<div style="font-size:13px;line-height:1.7;margin-top:6px">${c.emoji} <b>${esc(c.name)}</b>
     صرفت <span class="num">${money0(r.now)}</span> لحد دلوقتي — متوقع يقفل على <b class="num" style="color:var(--red)">${money0(r.pace)}</b> والمعتاد <span class="num">${money0(r.avg)}</span></div>`; };
   const sv=p.save&&catOf(p.save.id);
-  return `<div class="card"><h3>🧠 مصاريفك المعتادة</h3>
+  return `<div class="card"><h3>🧠 مصاريفك المعتادة${qh('habits')}</h3>
     <div class="kv"><span>${p.estimate?'تقدير الشهر من اللي صرفته لحد دلوقتي':`المعتاد في الشهر (متوسط ${p.n===1?'شهر واحد':p.n===2?'شهرين':p.n+' شهور'})`}</span><b>${money0(p.avgTotal)} ${cur}</b></div>
     ${!p.estimate?`<div class="perf"></div><div class="kv"><span>الشهر ده متوقع يقفل على</span><b style="color:${diff>0?'var(--red)':'var(--mint)'}">${money0(p.paceTotal)} ${cur}</b></div>
       <div class="foot" style="margin-top:4px">${Math.abs(diff)<50?'زي المعتاد تقريباً.':diff>0?`لو باقي الشهر مشي عادي هتصرف <b>${money0(diff)}</b> ${cur} زيادة عن المعتاد.`:`أقل من المعتاد بـ <b>${money0(-diff)}</b> ${cur} — كمّل كده.`}</div>`:''}
@@ -2264,9 +2368,9 @@ function reconCard(mk){
   const a=S.accts.find(x=>x.type==='cash'&&!x.archived&&!x.ccy);
   if(!a) return '';
   const e=expectedFor(a.id), cur=esc(S.settings.cur);
-  if(!e) return `<div class="card"><h3>عدّ الكاش اللي معاك<button id="reconBtn">ابدأ</button></h3>
+  if(!e) return `<div class="card"><h3><span>عدّ الكاش اللي معاك${qh('recon')}</span><button id="reconBtn">ابدأ</button></h3>
     <div class="foot" style="margin:0">اكتب الكاش اللي معاك فعلاً مرة واحدة، وكل مرة تعدّ بعد كده التطبيق هيقولك الفرق بين المفروض يكون معاك واللي معاك فعلاً — والفرق ده هو اللي نسيت تسجّله.</div></div>`;
-  return `<div class="card"><h3>عدّ فلوس ${esc(a.name)}<button id="reconBtn">عدّيت تاني</button></h3>
+  return `<div class="card"><h3><span>عدّ فلوس ${esc(a.name)}${qh('recon')}</span><button id="reconBtn">عدّيت تاني</button></h3>
     <div class="kv"><span>آخر مرة عدّيت (${dayLabel(e.from)})</span><b>${money0(e.base)} ${cur}</b></div>
     <div class="perf"></div><div class="kv"><span>الحركة بعدها</span><b style="color:${e.delta>=0?'var(--mint)':'var(--chalk)'}">${e.delta>=0?'+':''}${money0(e.delta)}</b></div>
     <div class="perf"></div><div class="kv big"><span>المفروض معاك</span><b>${money0(e.expected)} ${cur}</b></div></div>`;
@@ -2380,7 +2484,7 @@ function walAcc(){
   const cash=base.filter(a=>a.type==='cash').reduce((s,a)=>s+balance(a.id),0);
   const bank=base.filter(a=>a.type!=='cash').reduce((s,a)=>s+balance(a.id),0);
   const lb=list.filter(a=>!a.ccy), lf=list.filter(a=>a.ccy);
-  return `${strip}<div class="worth"><div class="cap">${GROUPS[f][1]}</div>
+  return `${strip}<div class="worth"><div class="cap">${GROUPS[f][1]}${qh('worth')}</div>
       <div class="v">${money(w)}<span class="cur">${cur}</span></div>
       <div class="sub">${f==='all'?`كاش <span class="num">${money0(cash)}</span> · بنك وكروت <span class="num">${money0(bank)}</span>${fx.length?` · عملات <span class="num">${money0(w-cash-bank)}</span>`:''}`
         :`${list.length===1?'حساب واحد':list.length+' حسابات'}${f!=='all'&&live.length?` · ${Math.round(w/Math.max(1,netWorth())*100)}% من فلوسك`:''}`}</div></div>
@@ -2428,7 +2532,7 @@ function acctDetail(a){
       ${a.ccy?`<div class="sub">≈ <span class="num">${money0(balanceBase(a.id))}</span> ${cur}</div>`:''}</div>
     <div class="mnav"><button id="amNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
       <span class="lbl">${monthLabel(mk)}</span><button id="amPrev" aria-label="قبله">›</button></div>
-    <div class="card"><h3>صرفت من ${esc(a.name)} <span style="font-size:15px">${money(E)} ${sym}</span></h3>
+    <div class="card"><h3><span>صرفت من ${esc(a.name)}${qh('acct')}</span><span style="font-size:15px">${money(E)} ${sym}</span></h3>
       ${cats.length?cats.map(([id,v])=>{ const c=catOf(id); return `<div class="brow"${tone(c)}>
         <div class="top"><span class="l"><em style="font-style:normal">${c.emoji}</em><span class="t">${esc(c.name)}</span>
           <span class="pct">${(v/E*100).toFixed(0)}%</span></span><span class="r">${money(v)}</span></div>
@@ -2599,7 +2703,7 @@ function unitCards(mk){
   if(!rows.length) return '';
   const pf=v=>`<b class="num" style="color:${v>=0?'var(--mint)':'var(--red)'}">${v>=0?'+':''}${money0(v)}</b>`;
   const line=(l,v)=>`<div class="kv" style="padding:2px 0;font-size:12.5px;color:var(--dim)"><span>${l}</span><span class="num">${v}</span></div>`;
-  return `<div class="card"><h3>مكسب كل وحدة</h3>${rows.map((r,i)=>`${i?'<div class="perf" style="margin:8px 0"></div>':''}
+  return `<div class="card"><h3>مكسب كل وحدة${qh('unit')}</h3>${rows.map((r,i)=>`${i?'<div class="perf" style="margin:8px 0"></div>':''}
     <div class="kv" style="padding:4px 0"><span style="display:flex;align-items:center;gap:7px"><i class="sw" style="background:${r.u?unitTone(r.u):'var(--dim)'}"></i><b style="font-family:inherit">${r.u?esc(unitName(r.u)):'من غير وحدة'}</b></span>
       <span style="font-size:12px;color:var(--dim)">${r.nights?nightsLbl(r.nights):''}</span></div>
     ${line(`المفروض يدخل${r.nights?' من الليالي':''}${r.rentDue?(r.nights?' والإيجار الشهري':' من الإيجار الشهري'):''}`,money0(r.earned))}
@@ -2685,7 +2789,7 @@ function walRent(){
   const stays=S.stays.length?`
     <div class="mnav"><button id="sNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
       <span class="lbl">${monthLabel(mk)}</span><button id="sPrev" aria-label="قبله">›</button></div>
-    <div class="hero"><div class="cap">دخل الحجوزات الشهر ده</div>
+    <div class="hero"><div class="cap">دخل الحجوزات الشهر ده${qh('stays')}</div>
       <div class="big">${money(sm.net)}<span class="cur">${cur}</span></div>
       <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>متأجرة <b>${occ}%</b> من الشهر</span><span>حجوزات <b>${sm.count}</b></span></div>
       <div class="cmp">وصلك فعلاً الشهر ده <span class="num">${money0(rm.collected)}</span> ${cur}${sm.fees>0?` · عمولات <span class="num">${money0(sm.fees)}</span>`:''}${sm.kept>0?` · من إلغاءات <span class="num">${money0(sm.kept)}</span>`:''}</div></div>
