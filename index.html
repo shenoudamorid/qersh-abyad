@@ -891,6 +891,11 @@ function applyMode(){
   }
   sortTx();
   await migrateRental();
+  /* once: re-label booking payments so the earliest one is the deposit (an edited payment used to move first) */
+  if(!S.settings.payLabels){
+    for(const st of S.stays) if((st.pays||[]).some(p=>p.tx)){ await syncStayTx(st,stayMoney(st)); await Store.put('stay',st); }
+    S.settings.payLabels=1; await saveSettings();
+  }
   for(const r of S.recur){
     let ch=false;
     if(!r.kind){ r.kind='exp'; ch=true; }
@@ -3003,8 +3008,10 @@ async function syncStayTx(st,before){
     if(t){ ['unit','unitId','fee','refund'].forEach(k=>delete t[k]); Object.assign(t,v); await Store.put('tx',t); }
     else{ const n={id:uid(),at:Date.now(),...v}; S.tx.push(n); await Store.put('tx',n); p.tx=n.id; }
   };
-  for(const [i,p] of (st.pays||[]).entries()){
-    const tag=p.amount>=due-0.005?'':i===0?'عربون · ':'دفعة · ';
+  /* the earliest payment (by day, then by when it was logged) is the deposit — not whichever sits first in the list */
+  const first=(st.pays||[]).slice().sort((a,b)=>a.date.localeCompare(b.date)||(a.at||0)-(b.at||0))[0];
+  for(const p of (st.pays||[])){
+    const tag=p.amount>=due-0.005?'':p===first?'عربون · ':'دفعة · ';
     await put(p,{kind:'inc',amount:p.amount,cat:st.cat,acct:p.acct,date:p.date,note:`${tag}${who}`});
   }
   for(const p of (st.refunds||[]))
