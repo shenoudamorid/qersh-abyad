@@ -504,3 +504,31 @@ test('app version matches the service worker cache', () => {
   const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
   assert.equal(html.match(/const APP_VER=(\d+);/)[1], sw.match(/masareef-v(\d+)/)[1]);
 });
+
+test('spending plan: usual month, limits, warnings', () => {
+  assert.equal(L.niceRound(43, true), 50); assert.equal(L.niceRound(43), 40);
+  assert.equal(L.niceRound(731, true), 750); assert.equal(L.niceRound(2730), 2700); assert.equal(L.niceRound(3, false), 10);
+  const cats = [{ id: 'food' }, { id: 'bills', fixed: true }, { id: 'fun' }, { id: 'none' }];
+  const months = [{ mk: '2026-07', by: { food: 2400, bills: 900, fun: 600 } },
+    { mk: '2026-08', by: { food: 2600, bills: 1100, fun: 0 } },
+    { mk: '2026-09', by: { food: 2500, bills: 1000, fun: 300 } }];
+  // 10 days into a 30-day month: 1,800 on food already, the other 20 days at the usual rate
+  const p = L.spendingPlan(months, cats, { by: { food: 1800, bills: 0 }, elapsed: 10, days: 30 });
+  assert.equal(p.n, 3); assert.equal(p.avgTotal, 2500 + 1000 + 300);
+  const by = Object.fromEntries(p.rows.map(r => [r.id, r]));
+  assert.equal(by.food.suggested, 2300);          // 2,500 less 10%, rounded
+  assert.equal(by.bills.suggested, 1000);         // fixed keeps the usual
+  assert.equal(by.fun.suggested, 250); assert.equal(by.fun.months, 2);
+  assert.equal(by.none, undefined);
+  assert.equal(Math.round(by.food.pace), Math.round(1800 + 2500 * 20 / 30));
+  assert.equal(Math.round(by.bills.pace), 667);
+  assert.deepEqual(p.hot.map(r => r.id), ['food']);
+  // a normal start of the month isn't flagged
+  assert.equal(L.spendingPlan(months, cats, { by: { food: 900 }, elapsed: 10, days: 30 }).hot.length, 0);
+  assert.deepEqual(p.save, { id: 'food', pct: 15, month: 400, year: 4800 });
+  assert.equal(p.total, 2300 + 1000 + 250);
+  // no complete month yet: lean on this month's pace once a week has passed
+  const e = L.spendingPlan([], cats, { by: { food: 700 }, elapsed: 7, days: 31 });
+  assert.equal(e.estimate, true); assert.equal(Math.round(e.rows[0].avg), 3100); assert.equal(e.hot.length, 0);
+  assert.equal(L.spendingPlan([], cats, { by: { food: 700 }, elapsed: 3, days: 31 }).rows[0].suggested, 0);
+});

@@ -607,7 +607,7 @@ nav button.fab.on svg{width:25px;height:25px;padding:4px 16px;margin-top:0;borde
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=46;
+const APP_VER=47;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1932,7 +1932,7 @@ function renderRep(){
   const maxD=Math.max(...daily,1), logged=daily.filter(v=>v>0).length;
   const top5=[...exp].sort((a,b)=>b.amount-a.amount).slice(0,5);
 
-  $('#repBody').innerHTML = nav + hero + goalsCard() + anom + budCard + ie + fv + (PRO()?acc+reconCard(mk):'') + `
+  $('#repBody').innerHTML = nav + hero + goalsCard() + anom + budCard + (personal&&isThis?habitsCard():'') + ie + fv + (PRO()?acc+reconCard(mk):'') + `
     <div class="stats">
       <div class="stat"><div class="v">${money0(E/dPast)}</div><div class="l">متوسط مصروف يومي</div></div>
       <div class="stat"><div class="v">${logged}<span style="font-size:13px;color:var(--dim)"> / ${D}</span></div><div class="l">أيام فيها مصاريف</div></div>
@@ -1953,6 +1953,7 @@ function renderRep(){
   bindRepNav();
   const be=$('#bEdit'); if(be) be.onclick=budgetSheet;
   const fe=$('#fvEdit'); if(fe) fe.onclick=fixedSheet;
+  const hp=$('#habPlan'); if(hp) hp.onclick=planBudgetSheet;
   const rb=$('#reconBtn'); if(rb) rb.onclick=()=>reconSheet(null);
 }
 /* the rentals' month: what actually came in and went out, next to what the month earned by the
@@ -2151,6 +2152,64 @@ function yearCard(sc){
       <span><i class="sw" style="background:var(--brand)"></i>مصاريف</span>
       <span><i class="sw" style="background:var(--mint)"></i>دخل</span></div>
     ${avg?`<div class="foot">متوسط مصاريفك الشهري <b>${money0(avg)}</b> ${esc(S.settings.cur)}</div>`:''}</div>`;
+}
+/* ═══════ spending habits: the usual month and a limit per category ═══════ */
+const catTotals=(mk,sc)=>{ const by={};
+  inMonth(mk,'exp',sc).forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amount);
+  inMonth(mk,'ref',sc).forEach(t=>by[t.cat]=(by[t.cat]||0)-t.amount); return by; };
+/* the last (up to) 6 complete months with spending — a first month the app started well into is left out,
+   it would make the usual look smaller than it is */
+function habitPlan(){
+  const sc=MINE(), thisM=today().slice(0,7), now=new Date();
+  const start=S.tx.reduce((m,t)=>t.date<m?t.date:m,today()), sm=start.slice(0,7);
+  const months=[];
+  for(let k=prevMonth(thisM),i=0;i<12&&months.length<6&&k>=sm;i++,k=prevMonth(k)){
+    if(k===sm && +start.slice(8)>3) break;
+    const by=catTotals(k,sc); if(Object.values(by).some(v=>v>0)) months.unshift({mk:k,by});
+  }
+  return spendingPlan(months,catsOf('exp'),{by:catTotals(thisM,sc),elapsed:now.getDate(),days:dim(now.getFullYear(),now.getMonth()+1)});
+}
+function habitsCard(){
+  const p=habitPlan(), cur=esc(S.settings.cur);
+  if(!p.rows.length || (!p.n && !p.estimate)) return `<div class="card"><h3>🧠 مصاريفك المعتادة</h3>
+    <div class="foot" style="margin:0">سجّل مصاريفك أسبوع على الأقل، وهقولك الشهر بيكلّفك كام عادةً، وأقترح حد لكل بند.</div></div>`;
+  const diff=p.paceTotal-p.avgTotal;
+  const line=r=>{ const c=catOf(r.id); return `<div style="font-size:13px;line-height:1.7;margin-top:6px">${c.emoji} <b>${esc(c.name)}</b>
+    صرفت <span class="num">${money0(r.now)}</span> لحد دلوقتي — متوقع يقفل على <b class="num" style="color:var(--red)">${money0(r.pace)}</b> والمعتاد <span class="num">${money0(r.avg)}</span></div>`; };
+  const sv=p.save&&catOf(p.save.id);
+  return `<div class="card"><h3>🧠 مصاريفك المعتادة</h3>
+    <div class="kv"><span>${p.estimate?'تقدير الشهر من اللي صرفته لحد دلوقتي':`المعتاد في الشهر (متوسط ${p.n===1?'شهر واحد':p.n===2?'شهرين':p.n+' شهور'})`}</span><b>${money0(p.avgTotal)} ${cur}</b></div>
+    ${!p.estimate?`<div class="perf"></div><div class="kv"><span>الشهر ده متوقع يقفل على</span><b style="color:${diff>0?'var(--red)':'var(--mint)'}">${money0(p.paceTotal)} ${cur}</b></div>
+      <div class="foot" style="margin-top:4px">${Math.abs(diff)<50?'زي المعتاد تقريباً.':diff>0?`لو باقي الشهر مشي عادي هتصرف <b>${money0(diff)}</b> ${cur} زيادة عن المعتاد.`:`أقل من المعتاد بـ <b>${money0(-diff)}</b> ${cur} — كمّل كده.`}</div>`:''}
+    ${p.hot.length?`<div class="perf" style="margin:10px 0 4px"></div><div style="font-size:12px;color:var(--dim)">بنود ماشية أعلى من المعتاد:</div>${p.hot.slice(0,3).map(line).join('')}`:''}
+    ${sv?`<div class="perf" style="margin:10px 0 4px"></div><div style="font-size:13px;line-height:1.7">💡 لو قللت <b>${sv.emoji} ${esc(sv.name)}</b> ${p.save.pct}% هتوفّر حوالي <b class="num">${money0(p.save.month)}</b> في الشهر — يعني <b class="num">${money0(p.save.year)}</b> ${cur} في السنة.</div>`:''}
+    ${p.estimate?'<div class="foot">ده تقدير من أول الشهر — بعد ما يكمل شهر كامل الأرقام هتبقى أدق.</div>':''}
+    <button class="ghost" id="habPlan" style="margin-top:12px;border-style:solid;color:var(--brand);border-color:var(--brand)">اقترح ميزانية لكل بند</button></div>`;
+}
+/* the suggested limit per category, editable, saved as each category's budget (and, if wanted, the month's total) */
+function planBudgetSheet(){
+  const p=habitPlan(), cur=esc(S.settings.cur);
+  const rows=p.rows.filter(r=>r.suggested>0);
+  sheet(`<h2>ميزانية لكل بند</h2>
+    <p class="lede">على أساس ${p.estimate?'اللي صرفته الشهر ده لحد دلوقتي':`متوسط ${p.n===1?'آخر شهر':p.n===2?'آخر شهرين':'آخر '+p.n+' شهور'}`}. البنود الأساسية بالمعتاد، والكماليات أقل 10%. غيّر أي رقم براحتك.</p>
+    <div class="list">${rows.map(r=>{ const c=catOf(r.id); return `<div class="item" style="gap:10px">
+      <input type="checkbox" data-pc="${r.id}" checked style="width:19px;height:19px;flex:none;accent-color:var(--brand)">
+      <span class="nm">${c.emoji} ${esc(c.name)}<small>المعتاد ${money0(r.avg)}${r.now?` · الشهر ده ${money0(r.now)}`:''}${c.budget>0?` · الحالية ${money0(c.budget)}`:''}${r.fixed?' · أساسي':''}</small></span>
+      <input type="number" inputmode="decimal" min="0" step="10" data-pv="${r.id}" value="${r.suggested}" style="width:92px;text-align:center;padding:9px 6px;border-radius:10px;background:var(--ink);border:1.5px solid var(--ink3);color:inherit"></div>`; }).join('<div class="perf"></div>')}</div>
+    <div class="kv big" style="margin-top:12px"><span>المجموع</span><b id="pbT"></b></div>
+    <label class="chk"><input type="checkbox" id="pbM" checked><span>خلّي ميزانية الشهر كله = المجموع ده</span></label>
+    <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="pbOk">احفظ الميزانيات</button></div>`);
+  const sh=$('#sheet');
+  const picked=()=>rows.filter(r=>sh.querySelector(`[data-pc="${r.id}"]`).checked).map(r=>({r,v:Math.max(0,Number(sh.querySelector(`[data-pv="${r.id}"]`).value)||0)}));
+  const upd=()=>{ $('#pbT').textContent=`${money0(picked().reduce((s,x)=>s+x.v,0))} ${S.settings.cur}`; };
+  sh.addEventListener('input',upd); sh.addEventListener('change',upd); upd();
+  $('#pbOk').onclick=async()=>{
+    const list=picked(); if(!list.length) return closeSheet();
+    for(const {r,v} of list){ const c=catOf(r.id); c.budget=v; await Store.put('cats',c); }
+    if($('#pbM').checked){ S.settings.monthBudget=list.reduce((s,x)=>s+x.v,0); await saveSettings(); }
+    closeSheet(); renderRep(); renderRail();
+    toast(`اتحفظت ميزانية ${list.length===1?'بند واحد':list.length<=10?list.length+' بنود':list.length+' بند'}`);
+  };
 }
 function budgetSheet(){
   const b=S.settings.monthBudget||0;

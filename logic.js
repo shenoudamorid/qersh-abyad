@@ -946,6 +946,45 @@ function guessCat(text,cats){
   return scoreItems(keys,keys.map(()=>false),cats,c=>c.name,c=>c.words).best;
 }
 
+/* ═══════ spending habits ═══════ */
+/* a friendly round figure: to 10 under 100, to 50 under 1,000, to 100 above. `up` rounds up, else to the nearest */
+function niceRound(v,up){
+  const step=v<100?10:v<1000?50:100, f=up?Math.ceil:Math.round;
+  return Math.max(step,f(v/step)*step);
+}
+/* what a typical month costs, category by category, and a limit for each.
+   months: [{mk, by:{catId:amount}}] — complete months only, oldest first
+   cats:   [{id, fixed}] — fixed (أساسي) categories keep their usual amount, the rest get `cut` taken off
+   cur:    {by:{catId:amount}, elapsed, days} — this month so far, to project where it's heading:
+           what's spent already plus the rest of the month at the usual rate (a big shop on day 3
+           doesn't get multiplied by ten)
+   With no complete month yet the plan leans on this month's pace and says so (estimate). */
+function spendingPlan(months,cats,cur,cut=0.1){
+  const n=months.length, estimate=!n && cur && cur.elapsed>=7;
+  const proj=v=>cur&&cur.elapsed>0?v/cur.elapsed*cur.days:0;
+  const rows=[];
+  for(const c of cats){
+    const vals=months.map(m=>Math.max(0,(m.by||{})[c.id]||0));
+    const now=Math.max(0,((cur&&cur.by)||{})[c.id]||0);
+    const avg=n?vals.reduce((s,v)=>s+v,0)/n:estimate?proj(now):0;
+    if(!(avg>0) && !(now>0)) continue;
+    const suggested=avg>0?(c.fixed?niceRound(avg,true):niceRound(avg*(1-cut))):0;
+    const left=cur&&cur.days?Math.max(0,cur.days-cur.elapsed)/cur.days:0;
+    const pace=n?now+avg*left:proj(now);
+    rows.push({id:c.id,fixed:!!c.fixed,avg,now,pace,suggested,
+      months:vals.filter(v=>v>0).length,max:Math.max(0,...vals)});
+  }
+  rows.sort((a,b)=>b.avg-a.avg||b.now-a.now);
+  const avgTotal=rows.reduce((s,r)=>s+r.avg,0), nowTotal=rows.reduce((s,r)=>s+r.now,0);
+  /* running hot: this month's pace well above the usual (by a fifth and at least 100) */
+  const hot=cur&&cur.elapsed>=5&&n?rows.filter(r=>r.avg>0&&r.pace>r.avg*1.2&&r.pace-r.avg>=100).sort((a,b)=>(b.pace-b.avg)-(a.pace-a.avg)):[];
+  /* the easiest saving: the biggest optional category */
+  const opt=rows.find(r=>!r.fixed&&r.avg>=100);
+  return {n,estimate,avgTotal,nowTotal,paceTotal:rows.reduce((s,r)=>s+r.pace,0),rows,hot,
+    save:opt?{id:opt.id,pct:15,month:niceRound(opt.avg*0.15),year:niceRound(opt.avg*0.15)*12}:null,
+    total:rows.reduce((s,r)=>s+r.suggested,0)};
+}
+
 /* ═══════ backup ═══════ */
 /* returns an error message for a malformed backup, or '' if it's safe to restore */
 function checkBackup(d){
@@ -1000,4 +1039,4 @@ if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextM
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,CAT_WORDS,checkBackup,repairBackup};
+  parseSentence,guessCat,niceRound,spendingPlan,CAT_WORDS,checkBackup,repairBackup};
