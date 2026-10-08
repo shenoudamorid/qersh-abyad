@@ -360,6 +360,7 @@ details.more>summary::-webkit-details-marker{display:none}
 .chk{display:flex;align-items:flex-start;gap:9px;font-size:13px;line-height:1.5;padding:12px;
      background:var(--ink);border-radius:12px;border:1px solid var(--ink3)}
 .chk input{width:19px;height:19px;flex:none;margin:1px 0 0;accent-color:var(--brand)}
+.f .chk input{width:19px;height:19px;padding:0;border:0;box-shadow:none;background:none}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:9px 0}
 .kv b{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;direction:ltr}
 .kv.big{font-size:15px}
@@ -623,7 +624,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=56;
+const APP_VER=57;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -910,6 +911,7 @@ function applyMode(){
   }
   sortTx();
   await migrateRental(); await seedWords();
+  if(linkPeople()) await saveSettings(); await tagByCat();
   /* once: drop the invisible direction marks the iPhone keyboard left in notes */
   if(!S.settings.cleanNotes){
     const dirty=S.tx.filter(t=>t.note&&cleanText(t.note)!==t.note);
@@ -948,6 +950,10 @@ function applyMode(){
   if(!Store.persistent){ $('#memWarn').hidden=false; return; }
   persisted=await Store.persist();
   if(!S.tx.length && !S.settings.welcomed && !(S.settings.lock&&S.settings.lock.pin)) setTimeout(welcome,400);
+  /* once: kids things sitting in other categories, now that a person has a category of their own */
+  if(!S.settings.pinAsked && catPins().length){ const mv=pinMoves();
+    if(mv.length) setTimeout(()=>{ if((!$('#lock')||$('#lock').hidden)&&!$('#sheet').classList.contains('on')) pinMoveSheet(mv,async()=>{ S.settings.pinAsked=1; await saveSettings(); }); },1600);
+    else { S.settings.pinAsked=1; await saveSettings(); } }
   const nag=backupNag(); if(nag) setTimeout(()=>{ if(!$('#lock')||$('#lock').hidden) toast(nag,exportJson,'خُد نسخة'); },1200);
 })();
 
@@ -1518,7 +1524,7 @@ $('#noteBtn').addEventListener('click',()=>{
   $('#fOk').onclick=()=>{
     S.draft.note=cleanText($('#fNote').value);
     /* no chip tapped yet → let the note pick the category («شاورما» → أكل وشرب) */
-    const g=S.draft.kind!=='trf'&&!S.draft.catPicked&&guessCat(S.draft.note,catsOf(S.draft.kind));
+    const g=S.draft.kind!=='trf'&&!S.draft.catPicked&&guessCat(S.draft.note,catsOf(S.draft.kind),catPins());
     if(g){ if(!S.draft.catGuessed) S.draft.prevCat=S.draft.cat; S.draft.cat=g.id; S.draft.catGuessed=true; renderCats(); }
     S.draft.date=$('#fDate').value||today();
     if(!S.draft.ccyAuto){ S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null; }
@@ -1535,7 +1541,7 @@ $('#noteBtn').addEventListener('click',()=>{
    and often stops returning text after the first use — its keyboard dictation has neither problem */
 const SR=IOS?null:(window.SpeechRecognition||window.webkitSpeechRecognition);
 const parseEntry=raw=>parseSentence(raw,{accts:liveAccts(),expCats:catsOf('exp'),incCats:catsOf('inc'),
-  pro:PRO(),lastCat:S.lastCat,acct:S.draft.acct});
+  pro:PRO(),lastCat:S.lastCat,acct:S.draft.acct,pins:catPins()});
 $('#nlBtn').addEventListener('click',()=>{
   sheet(`<h2>تسجيل بجملة</h2>
     <p class="lede">اكتب أو قول المبلغ والتصنيف والحساب في سطر واحد. مثال: <b>٥٠ أكل كاش</b> أو <b>خمسين شاورما فيزا</b>.</p>
@@ -1602,7 +1608,7 @@ $('#nlBtn').addEventListener('click',()=>{
     const p=parseEntry($('#nlIn').value);
     if(!p){ $('#nlIn').focus(); return; }
     closeSheet();
-    const w=(p.kind==='exp'||p.kind==='ref')?guessWho(p.note):'';
+    const w=(p.kind==='exp'||p.kind==='ref')?autoWho(p.note,p.cat):'';
     await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{})});
   };
 });
@@ -1627,7 +1633,7 @@ function siriMany(parts){
   $('#siOk').onclick=async()=>{
     const pick=[...document.querySelectorAll('[data-si]:checked')].map(c=>ps[+c.dataset.si].p);
     closeSheet();
-    for(const p of pick){ const w=(p.kind==='exp'||p.kind==='ref')?guessWho(p.note):'';
+    for(const p of pick){ const w=(p.kind==='exp'||p.kind==='ref')?autoWho(p.note,p.cat):'';
       await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{})}); }
     if(pick.length>1) toast(`اتسجلوا ${pick.length}`);
   };
@@ -1670,7 +1676,7 @@ $('#save').addEventListener('click',async()=>{
   if(S.draft.unit && (k==='exp'||k==='ref')) t.unitId=S.draft.unit;
   if(S.draft.credit && k==='exp' && PRO()) t.credit={...S.draft.credit,pays:[]};
   if((k==='exp'||k==='ref') && S.draft.who) t.who=S.draft.who;
-  else if((k==='exp'||k==='ref') && guessWho(t.note)){ t.who=guessWho(t.note); t.whoAuto=1; }
+  else if((k==='exp'||k==='ref') && autoWho(t.note,t.cat)){ t.who=autoWho(t.note,t.cat); t.whoAuto=1; }
   if(k!=='trf' && S.draft.catPicked && S.draft.note) await learnFrom(S.draft.note,S.draft.cat);
   if(k!=='trf' && !S.draft.catGuessed) S.lastCat[k]=S.draft.cat;
   if(S.draft.catGuessed){ S.draft.cat=S.draft.prevCat||S.draft.cat; S.draft.catGuessed=false; }
@@ -2515,6 +2521,54 @@ function guessWho(note){
   const hit=people().filter(p=>p.name&&(n.includes(' '+norm(p.name)+' ')||n.includes(' و'+norm(p.name)+' ')));
   return hit.length===1?hit[0].id:'';
 }
+/* a family member can have a category of their own («لولو» → 🧸 لولو): their name in a note, or —
+   for a kids category — any baby word (بامبرز، بيبي، اطفال…), sends the entry there and tags it for them */
+const kidsCat=c=>!!c&&(c.words||[]).some(w=>['بامبرز','اطفال','حفاضات'].includes(w));
+const isKid=p=>p.kid!==undefined?!!p.kid:kidsCat(S.cats.find(c=>c.id===p.cat));
+function catPins(){
+  const out=[], live=people().filter(p=>p.cat&&S.cats.some(c=>c.id===p.cat&&c.kind==='exp'));
+  for(const p of live) out.push({cat:p.cat,words:[p.name]});
+  for(const p of live) if(isKid(p)) out.push({cat:p.cat,words:KID_W});
+  return out;
+}
+/* a person with the same name as a category is linked to it, unless they were unlinked on purpose (cat:'') */
+function linkPeople(){
+  let ch=false;
+  for(const p of people()) if(p.cat===undefined){ const c=catsOf('exp').find(c=>norm(c.name)===norm(p.name)); if(c){ p.cat=c.id; ch=true; } }
+  return ch;
+}
+/* a kid's category with no keywords gets the built-in kids ones (مدرسة، دروس، لبن اطفال…) */
+async function seedKidWords(){
+  for(const p of people()){ const c=p.cat&&S.cats.find(x=>x.id===p.cat);
+    if(c&&isKid(p)&&!(c.words||[]).length){ c.words=[...(CAT_WORDS['الولد']||[])]; await Store.put('cats',c); } }
+}
+const autoWho=(note,cat)=>guessWho(note)||((people().find(p=>p.cat&&p.cat===cat)||{}).id)||'';
+/* old entries the pins now point elsewhere («علاج لولو» sitting in صحة) — offered, never moved silently */
+function pinMoves(){
+  const pins=catPins(); if(!pins.length) return [];
+  return S.tx.filter(t=>(t.kind==='exp'||t.kind==='ref')&&!t.stay&&!t.auto).map(t=>({t,to:pinCat(t.note,pins)})).filter(x=>x.to&&x.to!==x.t.cat);
+}
+function pinMoveSheet(moves,after){
+  sheet(`<h2>🧸 حاجات ${esc(catOf(moves[0].to).name)} في تصنيفات تانية</h2>
+    <p class="lede">دول مصاريف قديمة شكلها تبع ${esc(catOf(moves[0].to).name)}. علّم اللي عايز تنقله.</p>
+    <div class="list">${moves.map((m,i)=>`<label class="item" style="gap:10px"><input type="checkbox" data-pm="${i}" checked style="width:20px;height:20px;flex:none">
+      <span class="nm">${esc(m.t.note||catOf(m.t.cat).name)}<small>${dayLabel(m.t.date)} · من ${catOf(m.t.cat).emoji} ${esc(catOf(m.t.cat).name)} ← ${catOf(m.to).emoji} ${esc(catOf(m.to).name)}</small></span>
+      <span class="hint num">${money0(m.t.amount)}</span></label>`).join('<div class="perf"></div>')}</div>
+    <div class="acts"><button class="no" id="pmNo">سيبهم</button><button class="go" id="pmOk">انقل</button></div>`);
+  $('#pmNo').onclick=()=>{ closeSheet(); after&&after(0); };
+  $('#pmOk').onclick=async()=>{
+    const pick=[...document.querySelectorAll('[data-pm]:checked')].map(c=>moves[+c.dataset.pm]);
+    for(const m of pick){ m.t.cat=m.to; if(!m.t.who){ const w=autoWho(m.t.note,m.to); if(w){ m.t.who=w; m.t.whoAuto=1; } } }
+    if(pick.length) await Store.batch(pick.map(m=>['put','tx',m.t]));
+    closeSheet(); renderRep(); renderLog(); renderRail(); toast(`اتنقل ${pick.length}`); after&&after(pick.length);
+  };
+}
+/* entries already in a person's category get tagged for them — quietly, the category says it */
+async function tagByCat(){
+  const ch=S.tx.filter(t=>(t.kind==='exp'||t.kind==='ref')&&!t.who&&autoWho(t.note,t.cat));
+  for(const t of ch){ t.who=autoWho(t.note,t.cat); t.whoAuto=1; }
+  if(ch.length) await Store.batch(ch.map(t=>['put','tx',t]));
+}
 function whoField(val,kind,id='fWho'){
   if(!people().length || (kind!=='exp'&&kind!=='ref')) return '';
   return `<div class="f"><label>لمين؟</label><select id="${id}"><option value="">— مش لحد معيّن —</option>
@@ -2535,27 +2589,33 @@ function peopleSheet(){
   const list=people();
   sheet(`<h2>أفراد العيلة</h2>
     <p class="lede">علشان تعرف كل واحد بيتصرف عليه كام. اكتب الاسم زي ما بتكتبه في الملاحظات («مرثا»، «لولو») والتطبيق يختاره لوحده.</p>
-    <div id="pplL">${list.map((p,i)=>`<div class="row2" style="margin-bottom:8px;grid-template-columns:64px 1fr 40px">
-      <input data-pe="${i}" maxlength="3" value="${esc(p.emoji||'👤')}" style="text-align:center;font-size:20px">
-      <input data-pn="${i}" maxlength="20" value="${esc(p.name)}"><button type="button" data-px="${i}" style="color:var(--red);font-size:18px">×</button></div>`).join('')}</div>
-    <div class="row2" style="grid-template-columns:64px 1fr"><input id="pplE" maxlength="3" value="👤" style="text-align:center;font-size:20px"><input id="pplN" maxlength="20" placeholder="اسم جديد (مثلاً: مرثا)"></div>
+    <div id="pplL">${list.map((p,i)=>`<div class="f pcard" style="padding:10px;border:1px solid var(--ink3);border-radius:14px;margin-bottom:10px">
+      <div class="row2" style="grid-template-columns:56px 1fr 40px;gap:8px">
+        <input data-pe="${i}" maxlength="3" value="${esc(p.emoji||'👤')}" aria-label="الإيموجي" style="text-align:center;font-size:20px;padding:10px 4px">
+        <input data-pn="${i}" maxlength="20" value="${esc(p.name)}" aria-label="الاسم"><button type="button" data-px="${i}" aria-label="امسح" style="color:var(--red);font-size:20px">×</button></div>
+      <select data-pc="${i}" aria-label="تصنيف ${esc(p.name)}" style="margin-top:8px"><option value="">مصاريفه في أي تصنيف</option>
+        ${catsOf('exp').map(c=>`<option value="${c.id}" ${c.id===p.cat?'selected':''}>ليه تصنيف لوحده: ${c.emoji} ${esc(c.name)}</option>`).join('')}</select>
+      <label class="chk" style="margin-top:8px;color:var(--dim)"><input type="checkbox" data-pk="${i}" ${isKid(p)?'checked':''}><span>👶 طفل: حاجات الأطفال (بامبرز، بيبي، حضانة…) تروح لتصنيفه</span></label></div>`).join('')}</div>
+    ${list.some(p=>p.cat)?'':'<p class="foot" style="margin:0 0 10px">لو حد ليه تصنيف لوحده (زي «لولو»)، اختاره تحت اسمه، وأي حاجة فيها اسمه هتروح هناك لوحدها.</p>'}
+    <div class="f"><label>ضيف حد</label><div class="row2" style="grid-template-columns:56px 1fr;gap:8px"><input id="pplE" maxlength="3" value="👤" aria-label="الإيموجي" style="text-align:center;font-size:20px;padding:10px 4px"><input id="pplN" maxlength="20" placeholder="اسم جديد (مثلاً: مرثا)"></div></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="pplOk">حفظ</button></div>`);
   const sh=$('#sheet'); const drop=new Set();
-  sh.querySelectorAll('[data-px]').forEach(b=>b.onclick=()=>{ drop.add(+b.dataset.px); b.parentElement.style.opacity=.35; });
+  sh.querySelectorAll('[data-px]').forEach(b=>b.onclick=()=>{ drop.add(+b.dataset.px); b.closest('.pcard').style.opacity=.35; });
   $('#pplOk').onclick=async()=>{
-    const next=list.map((p,i)=>drop.has(i)?null:{...p,emoji:sh.querySelector(`[data-pe="${i}"]`).value.trim()||'👤',name:sh.querySelector(`[data-pn="${i}"]`).value.trim()}).filter(p=>p&&p.name);
+    const next=list.map((p,i)=>drop.has(i)?null:{...p,emoji:sh.querySelector(`[data-pe="${i}"]`).value.trim()||'👤',name:sh.querySelector(`[data-pn="${i}"]`).value.trim(),cat:sh.querySelector(`[data-pc="${i}"]`).value,kid:sh.querySelector(`[data-pk="${i}"]`).checked}).filter(p=>p&&p.name);
     const n=$('#pplN').value.trim(); if(n) next.push({id:uid(),name:n,emoji:$('#pplE').value.trim()||'👤'});
-    S.settings.people=next; await saveSettings();
+    S.settings.people=next; linkPeople(); await saveSettings(); await seedKidWords();
     /* old entries whose note names someone can be tagged in one go */
     /* ones the app tagged by itself are looked at again with the new list (a second name can make it «both») */
-    const redo=S.tx.filter(t=>t.whoAuto&&t.who!==guessWho(t.note));
-    for(const t of redo){ const w=guessWho(t.note); if(w) t.who=w; else { delete t.who; delete t.whoAuto; } }
+    const redo=S.tx.filter(t=>t.whoAuto&&t.who!==autoWho(t.note,t.cat));
+    for(const t of redo){ const w=autoWho(t.note,t.cat); if(w) t.who=w; else { delete t.who; delete t.whoAuto; } }
     if(redo.length) await Store.batch(redo.map(t=>['put','tx',t]));
-    const old=S.tx.filter(t=>(t.kind==='exp'||t.kind==='ref')&&!t.who&&guessWho(t.note));
+    const old=S.tx.filter(t=>(t.kind==='exp'||t.kind==='ref')&&!t.who&&autoWho(t.note,t.cat));
     let tagged=0;
-    if(old.length&&confirm(`فيه ${old.length} مصروف قديم مكتوب في ملاحظته اسم حد من العيلة.\nأعلّمهم باسمه؟`)){
-      for(const t of old){ t.who=guessWho(t.note); t.whoAuto=1; } await Store.batch(old.map(t=>['put','tx',t])); tagged=old.length; }
+    if(old.length&&confirm(`فيه ${old.length} مصروف قديم تبع حد من العيلة (اسمه في الملاحظة أو في تصنيفه).\nأعلّمهم باسمه؟`)){
+      for(const t of old){ t.who=autoWho(t.note,t.cat); t.whoAuto=1; } await Store.batch(old.map(t=>['put','tx',t])); tagged=old.length; }
     closeSheet(); renderSet(); renderRep(); renderLog(); toast(tagged?`تم — واتعلّم ${tagged} مصروف قديم`:'تم');
+    const mv=pinMoves(); if(mv.length) setTimeout(()=>{ if(!$('#sheet').classList.contains('on')) pinMoveSheet(mv); },450);
   };
 }
 
@@ -3151,7 +3211,7 @@ async function migrateRental(){
 async function learnFrom(note,catId){
   const c=S.cats.find(x=>x.id===catId), ph=learnPhrase(note);
   if(!c||!ph) return;
-  const g=guessCat(ph,catsOf(c.kind));
+  const g=guessCat(ph,catsOf(c.kind),catPins());
   if(g&&g.id===c.id) return;
   const key=norm(ph);
   for(const o of S.cats) if(o!==c && (o.words||[]).some(w=>norm(w)===key)){
@@ -4432,6 +4492,7 @@ async function restoreFrom(text){
     S.photoIds=new Set(await Store.keys('photo').catch(()=>[]));
     if(!Array.isArray(S.settings.units)) S.settings.units=[];
     await migrateRental();
+    if(linkPeople()) await saveSettings(); await tagByCat();
     if(!(d.settings&&d.settings.wordsSeeded)) delete S.settings.wordsSeeded;
     await seedWords();
     S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;

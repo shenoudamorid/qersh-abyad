@@ -920,8 +920,9 @@ function parseSentence(raw,ctx){
 
   const cats=kind==='inc'?ctx.incCats:ctx.expCats;
   const note=toks.filter((_,i)=>!used[i]).join(' ').slice(0,60);
+  const pc=kind!=='inc'?pinCat(toks.join(' '),ctx.pins):'', pin=pc&&cats.some(c=>c.id===pc)?pc:'';
   return {amount,kind,
-    cat:(cM.best&&cM.best.id)||ctx.lastCat[kind]||(cats[0]&&cats[0].id),
+    cat:pin||(cM.best&&cM.best.id)||ctx.lastCat[kind]||(cats[0]&&cats[0].id),
     acct:(aM.best&&aM.best.id)||ctx.acct, note};
 }
 
@@ -960,8 +961,28 @@ function scoreItems(keys,used,items,nameOf,wordsOf){
   return {best,score:bs,hit:bh};
 }
 
+/* words that always mean «for the kids» — they beat any other keyword («شامبو اطفال» isn't بيت ومعيشة) */
+const KID_W=['اطفال','طفل','طفلة','بيبي','رضيع','رضع','نونو','بامبرز','حفاض','حفاضة','حفاضات','بيبي جوي','مولفكس',
+  'سيريلاك','ببرونة','ببرونات','بزازة','سكاتة','حضانة','تطعيم','تطعيمات','لعب اطفال','العاب اطفال','لبس اطفال','هدوم اطفال'];
+/* pins: [{cat, words}] — a family member's name or a kids word sends the entry to its category, whatever else matches.
+   Words match whole («لولو»، «للبيبي»، «والبامبرز»), never as part of a longer word. */
+function pinCat(text,pins){
+  if(!pins||!pins.length) return '';
+  const vars=new Set();
+  for(const t of tokOf(normDigits(String(text||'')))){
+    const n=norm(t); vars.add(n); vars.add(stripAl(n));
+    for(const pre of ['وبال','وال','بال','فال','لل','ال','و','ب','ل','ف']) if(n.startsWith(pre)&&n.length-pre.length>=3){ const r=n.slice(pre.length); vars.add(r); vars.add(stripAl(r)); }
+  }
+  for(const p of pins) for(const w of p.words||[]){
+    const ws=tokOf(w).map(x=>norm(x)).filter(Boolean);
+    if(ws.length&&ws.every(x=>vars.has(x)||vars.has(stripAl(x)))) return p.cat;
+  }
+  return '';
+}
 /* the category a free-text note points to (by name or keyword), or null */
-function guessCat(text,cats){
+function guessCat(text,cats,pins){
+  const pc=pinCat(text,pins), pin=pc&&cats.find(c=>c.id===pc);
+  if(pin) return pin;
   const keys=tokOf(normDigits(String(text||''))).map(stripAl);
   return scoreItems(keys,keys.map(()=>false),cats,c=>c.name,c=>c.words).best;
 }
@@ -1110,4 +1131,4 @@ if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextM
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,allocatePayment,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries};
+  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries,pinCat,KID_W};
