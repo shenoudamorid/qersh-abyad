@@ -617,7 +617,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=52;
+const APP_VER=53;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1312,6 +1312,7 @@ function renderReadout(){
   $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit||!!S.draft.credit||!!S.draft.photo);
   if(S.draft.unit && k!=='trf' && k!=='inc') $('#tag').innerHTML+=` · 🏘 ${esc(unitName(S.draft.unit))}`;
   if(S.draft.photo && k!=='trf') $('#tag').innerHTML+=' · 📷';
+  if(S.draft.who && (k==='exp'||k==='ref')) $('#tag').innerHTML+=` · ${esc(personLbl(S.draft.who))}`;
   if(S.draft.credit && k==='exp') $('#tag').innerHTML+=` · 🧾 آجل${S.draft.credit.vendor?' — '+esc(S.draft.credit.vendor):''}`;
   if(S.draft.fee && k==='trf') $('#tag').innerHTML+=` · رسوم ${money(S.draft.fee)}`;
   $('#catLbl').hidden = S.draft.kind==='trf' || !PRO();
@@ -1494,6 +1495,7 @@ $('#noteBtn').addEventListener('click',()=>{
       <input id="fNote" maxlength="80" placeholder="مثلاً: بنزين العربية" value="${esc(S.draft.note)}"></div>
     <div class="f"><label>التاريخ</label><input id="fDate" type="date" value="${S.draft.date}"></div>
     ${unitField(S.draft.unit,S.draft.kind)}
+    ${whoField(S.draft.who||'',S.draft.kind)}
     ${creditFields(S.draft.kind==='exp'&&PRO()?(S.draft.credit||null):undefined)}
     ${S.draft.kind!=='trf'?`<div class="f"><label>صورة الإيصال (لو حابب)</label><div id="fPhW">${S.draft.photo?`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px">`:''}
       ${photoPicker('fPh',S.draft.photo?'📷 غيّر الصورة':'📷 صوّر الإيصال أو اختار صورة')}</div></div>`:''}
@@ -1514,6 +1516,7 @@ $('#noteBtn').addEventListener('click',()=>{
     S.draft.date=$('#fDate').value||today();
     if(!S.draft.ccyAuto){ S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null; }
     S.draft.unit=$('#fUnit')?$('#fUnit').value:'';
+    S.draft.who=$('#fWho')?$('#fWho').value:'';
     S.draft.fee=$('#fFee')?Math.max(0,Number($('#fFee').value)||0):0;
     S.draft.credit=readCredit();
     closeSheet(); renderReadout();
@@ -1585,7 +1588,8 @@ $('#nlBtn').addEventListener('click',()=>{
     const p=parseEntry($('#nlIn').value);
     if(!p){ $('#nlIn').focus(); return; }
     closeSheet();
-    await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today()});
+    const w=(p.kind==='exp'||p.kind==='ref')?guessWho(p.note):'';
+    await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{})});
   };
 });
 
@@ -1600,6 +1604,8 @@ $('#save').addEventListener('click',async()=>{
   if(cc){ t.ccy=cc.code; t.raw=raw; t.rate=cc.rate; }
   if(S.draft.unit && (k==='exp'||k==='ref')) t.unitId=S.draft.unit;
   if(S.draft.credit && k==='exp' && PRO()) t.credit={...S.draft.credit,pays:[]};
+  if((k==='exp'||k==='ref') && S.draft.who) t.who=S.draft.who;
+  else if((k==='exp'||k==='ref') && guessWho(t.note)){ t.who=guessWho(t.note); t.whoAuto=1; }
   if(k!=='trf' && S.draft.catPicked && S.draft.note) await learnFrom(S.draft.note,S.draft.cat);
   if(k!=='trf' && !S.draft.catGuessed) S.lastCat[k]=S.draft.cat;
   if(S.draft.catGuessed){ S.draft.cat=S.draft.prevCat||S.draft.cat; S.draft.catGuessed=false; }
@@ -1610,7 +1616,7 @@ $('#save').addEventListener('click',async()=>{
     await Store.put('tx',f); S.tx.push(f);
   }
   const ph=k!=='trf'?S.draft.photo:null;
-  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null;
+  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null; S.draft.who='';
   const rec=await commit(t);
   if(ph&&rec){ await savePhoto(rec.id,ph); renderLog(); }
 });
@@ -1665,10 +1671,11 @@ function renderLog(){
   /* payments on things bought on credit: money moving, not new expenses */
   let cl=S.filter.kind||S.filter.cat?[]:credits().flatMap(t=>(t.credit.pays||[]).map(p=>({t,date:p.date,acct:p.acct,amount:p.amount})));
   if(S.filter.acct) cl=cl.filter(x=>x.acct===S.filter.acct);
+  if(S.filter.who) list=list.filter(t=>S.filter.who==='-'?!t.who&&(t.kind==='exp'||t.kind==='ref'):t.who===S.filter.who);
   if(S.filter.scope){ list=list.filter(t=>inScope(t,S.filter.scope)); cl=cl.filter(x=>inScope(x.t,S.filter.scope)); if(S.filter.scope==='biz') dl=[]; }
   if(S.search){ const q=norm(S.search); cl=cl.filter(x=>norm((x.t.credit.vendor||'')+' '+(x.t.note||'')).includes(q)); }
   if(S.search) list=list.filter(t=>matches(t,S.search));
-  const active=S.filter.cat||S.filter.acct||S.filter.kind||S.filter.scope;
+  const active=S.filter.cat||S.filter.acct||S.filter.kind||S.filter.scope||S.filter.who;
   $('#logFilter').textContent=active?'إلغاء التصفية':'تصفية';
   const tot=sum(list.filter(t=>t.kind==='exp'))-sum(list.filter(t=>t.kind==='ref'));
   const n=list.length+dl.length+cl.length;
@@ -1694,7 +1701,7 @@ function renderLog(){
       const isTrf=t.kind==='trf';
       const icon=isTrf?'⇄':catOf(t.cat).emoji;
       const name=isTrf?`${acctOf(t.acct).name} ← ${acctOf(t.toAcct).name}`:catOf(t.cat).name;
-      const bits=[t.note, S.photoIds.has(t.id)?'📎':'', t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
+      const bits=[t.note, t.who?personLbl(t.who):'', S.photoIds.has(t.id)?'📎':'', t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
         t.credit?`🧾 آجل${t.credit.vendor?' — '+t.credit.vendor:''}${creditLeft(t)>0?` · فاضل ${money0(creditLeft(t))}`:' · اتدفع'}`:'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
@@ -1805,6 +1812,7 @@ function editTx(id){
     <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">${acctOpts(t.toAcct)}</select></div>
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
     <div id="eUnitW">${unitField(t.unitId||'',t.kind,'eUnit')}</div>
+    <div id="eWhoW">${whoField(t.who||'',t.kind,'eWho')}</div>
     <div id="eCrW">${creditFields(t.kind==='exp'&&(PRO()||t.credit)?(t.credit||null):undefined,creditPaid(t)>0)}</div>
     ${!isTrf?`<div class="f"><label>صورة الإيصال</label><div id="ePh">${S.photoIds.has(t.id)?'<div style="font-size:12.5px;color:var(--dim)">بتحمّل…</div>':''}</div>
       <div id="ePhB">${photoPicker('ePhIn',S.photoIds.has(t.id)?'📷 غيّر الصورة':'📷 ضيف صورة الإيصال')}</div></div>`:''}
@@ -1817,6 +1825,7 @@ function editTx(id){
     if(!trf) $('#eCat').innerHTML=catsOf(k==='ref'?'exp':k)
       .map(c=>`<option value="${c.id}">${c.emoji} ${esc(c.name)}</option>`).join('');
     $('#eUnitW').innerHTML=unitField($('#eUnit')?$('#eUnit').value:(t.unitId||''),k,'eUnit');
+    $('#eWhoW').innerHTML=whoField($('#eWho')?$('#eWho').value:(t.who||''),k,'eWho');
     if(!creditPaid(t)) $('#eCrW').innerHTML=creditFields(k==='exp'&&PRO()?($('#cOn')?readCredit():(t.credit||null)):undefined);
   };
   if($('#eCrPay')) $('#eCrPay').onclick=()=>creditSheet(t.id);
@@ -1849,6 +1858,9 @@ function editTx(id){
     else { t.cat=$('#eCat').value; delete t.toAcct; }
     const u=$('#eUnit')?$('#eUnit').value:'';
     delete t.unit;
+    const w=$('#eWho')?$('#eWho').value:'';
+    if(w!==(t.who||'')) delete t.whoAuto;
+    if(w&&(k==='exp'||k==='ref')) t.who=w; else { delete t.who; delete t.whoAuto; }
     /* booking and rent income keep their unit — it follows the booking / contract */
     if(k==='exp'||k==='ref'){ if(u) t.unitId=u; else delete t.unitId; }
     else if(!t.stay && !t.rent) delete t.unitId;
@@ -1870,7 +1882,7 @@ function editTx(id){
   };
 }
 $('#logFilter').addEventListener('click',()=>{
-  if(S.filter.cat||S.filter.acct||S.filter.kind||S.filter.scope){ S.filter={cat:'',acct:'',kind:'',scope:''}; renderLog(); return; }
+  if(S.filter.cat||S.filter.acct||S.filter.kind||S.filter.scope||S.filter.who){ S.filter={cat:'',acct:'',kind:'',scope:'',who:''}; renderLog(); return; }
   sheet(`<h2>تصفية السجل</h2>
     <div class="f"><label>النوع</label><select id="flKind"><option value="">الكل</option>
       ${kindList().map(k=>`<option value="${k}">${KINDS[k].label}</option>`).join('')}</select></div>
@@ -1878,12 +1890,14 @@ $('#logFilter').addEventListener('click',()=>{
       ${S.cats.map(c=>`<option value="${c.id}">${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
     <div class="f"><label>الحساب</label><select id="flAcct"><option value="">كل الحسابات</option>
       ${liveAccts().map(a=>`<option value="${a.id}">${a.emoji} ${esc(a.name)}</option>`).join('')}</select></div>
+    ${people().length?`<div class="f"><label>لمين</label><select id="flWho"><option value="">الكل</option>
+      ${people().map(p=>`<option value="${p.id}">${esc(p.emoji||'👤')} ${esc(p.name)}</option>`).join('')}<option value="-">مش متحدد</option></select></div>`:''}
     ${hasBiz()?`<div class="f"><label>شخصي ولا إيجارات</label><select id="flScope"><option value="">الكل</option>
       <option value="mine">شخصي بس</option><option value="biz">🏘 الإيجارات بس</option></select></div>`:''}
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="flOk">اعرض</button></div>`);
   $('#flOk').onclick=()=>{
-    S.filter={kind:$('#flKind').value,cat:$('#flCat').value,acct:$('#flAcct').value,scope:$('#flScope')?$('#flScope').value:''};
+    S.filter={kind:$('#flKind').value,cat:$('#flCat').value,acct:$('#flAcct').value,scope:$('#flScope')?$('#flScope').value:'',who:$('#flWho')?$('#flWho').value:''};
     closeSheet(); renderLog();
   };
 });
@@ -1954,6 +1968,10 @@ const HELP={
     <p>المكسب = الدخل ناقص مصاريفها، بالطريقتين.</p>`},
   stays:{t:'دخل الحجوزات',b:()=>`<p>قيمة الليالي اللي اتسكنت الشهر ده بعد عمولة المنصة. الحجز اللي بيعدّي آخر الشهر بيتقسم على الشهرين بعدد لياليه.</p>
     <p><b>متأجرة X% من الشهر</b> = كام ليلة اتأجرت من ليالي الشهر.</p>`},
+  tithe:{t:'العشور',b:()=>`<p>بتحدد نسبة (عادةً 10%) من دخلك. التطبيق بيحسبها كل شهر من الدخل اللي سجلته، ويقارنها باللي سجلته في تصنيف العشور.</p>
+    <p><b>فاضل</b> = المفروض لسه ما طلّعتهوش. <b>زيادة</b> = طلّعت أكتر من النسبة. وتحت بيقولك المجموع من أول السنة.</p>`},
+  people:{t:'مصاريف كل فرد',b:()=>`<p>كل مصروف تعلّمه «لمين؟» (في التفاصيل ✎، أو لما تكتب الاسم في الملاحظة زي «علاج مرثا») بيتحسب على الشخص ده.</p>
+    <p>«مش متحدد / للبيت» = المصاريف اللي مش لحد معيّن (أكل البيت، فواتير…). تضيف أو تغيّر الأسامي من الإعدادات ← أفراد العيلة.</p>`},
   acct:{t:'صرفت من الحساب ده',b:()=>`<p>المصاريف اللي اتدفعت من الحساب ده بس، في الشهر اللي مختاره، مقسّمة بالتصنيف.</p>
     <p style="color:var(--dim)">التحويلات والسلف وسداد الآجل مش مصاريف، علشان كده ظاهرين في سطر لوحدهم.</p>`}
 };
@@ -2126,6 +2144,7 @@ function renderRep(){
   const hasGoals=S.goals.length>0;
   $('#repBody').innerHTML = nav + hero + story + anom + budCard + (personal&&isThis?habitsCard():'')
     + (E>0?`<div class="card"><h3>مصاريفك بالتصنيف${qh('cats')}</h3>${breakdown(exp,ref,E,false)}</div>`:'')
+    + (E>0?peopleCard(mk,sc):'') + (sc!=='biz'?titheCard(mk):'')
     + (hasGoals?goalsCard():'')
     + `<details class="more" id="repMore"${S.repMore?' open':''}><summary>📊 تفاصيل أكتر ${S.repMore?'▴':'▾'}</summary>`
     + (I>0?`<div class="card"><h3>دخلك بالتصنيف${qh('inc')}</h3>${breakdown(inc,null,I,true)}</div>`:'')
@@ -2151,6 +2170,8 @@ function renderRep(){
   const be=$('#bEdit'); if(be) be.onclick=budgetSheet;
   const fe=$('#fvEdit'); if(fe) fe.onclick=fixedSheet;
   const hp=$('#habPlan'); if(hp) hp.onclick=planBudgetSheet;
+  if($('#tiSet')) $('#tiSet').onclick=titheSetup;
+  if($('#tiPay')) $('#tiPay').onclick=tithePaySheet;
   const rb=$('#reconBtn'); if(rb) rb.onclick=()=>reconSheet(null);
 }
 /* the rentals' month: what actually came in and went out, next to what the month earned by the
@@ -2350,6 +2371,117 @@ function yearCard(sc){
       <span><i class="sw" style="background:var(--mint)"></i>دخل</span></div>
     ${avg?`<div class="foot">متوسط مصاريفك الشهري <b>${money0(avg)}</b> ${esc(S.settings.cur)}</div>`:''}</div>`;
 }
+/* ═══════ tithe: a share of the month's income set aside, against what was actually given ═══════ */
+const titheOn=()=>!!(S.settings.tithe&&S.settings.tithe.cat&&catOf(S.settings.tithe.cat).id);
+function titheMonth(mk){
+  const T=S.settings.tithe, base=T.base==='all'?'all':MINE();
+  const income=incNet(mk,base), due=income*(T.pct||10)/100;
+  const paid=sum(inMonth(mk,'exp').filter(t=>t.cat===T.cat))-sum(inMonth(mk,'ref').filter(t=>t.cat===T.cat));
+  return {income,due,paid,left:due-paid};
+}
+function titheCard(mk){
+  const cur=esc(S.settings.cur);
+  if(!titheOn()) return `<div class="card"><h3>⛪ العشور${qh('tithe')}</h3><div class="foot" style="margin:0">لو بتطلّع عشور، فعّل المتابعة وهقولك كل شهر المفروض تطلّع كام وطلّعت كام.
+    <button id="tiSet" style="color:var(--brand);font-weight:600">فعّلها</button></div></div>`;
+  const T=S.settings.tithe, m=titheMonth(mk);
+  const y=mk.slice(0,4); let yd=0, yp=0;
+  for(let k=y+'-01';k<=mk;k=nextMonth(k)){ const r=titheMonth(k); yd+=r.due; yp+=r.paid; }
+  const pct=m.due>0?Math.min(100,m.paid/m.due*100):0;
+  return `<div class="card"><h3><span>⛪ العشور${qh('tithe')}</span><button id="tiSet">تعديل</button></h3>
+    <div class="bar tall"><i style="width:${pct}%;background:var(--mint)"></i></div>
+    <div class="foot">${T.pct||10}% من ${T.base==='all'?'دخلك كله (مع الشقة)':'دخلك الشخصي'} (<span class="num">${money0(m.income)}</span>) = <b>${money0(m.due)}</b> ${cur}
+      <br>طلّعت <b>${money0(m.paid)}</b> — ${m.left>0.5?`فاضل <b style="color:var(--brand)">${money0(m.left)}</b>`:m.left<-0.5?`زيادة <b class="pos">${money0(-m.left)}</b> 🙏`:'كمّلت ✓'}
+      ${mk.slice(5)!=='01'?`<br><span style="color:var(--dim)">من أول السنة: المفروض ${money0(yd)} · طلّعت ${money0(yp)}</span>`:''}</div>
+    ${m.left>0.5&&mk===today().slice(0,7)?`<button class="ghost" id="tiPay" style="margin-top:10px;border-style:solid;color:var(--brand);border-color:var(--brand)">سجّل عشور ${money0(m.left)}</button>`:''}</div>`;
+}
+function titheSetup(){
+  const T=S.settings.tithe||{pct:10,base:'mine',cat:''};
+  const named=catsOf('exp').find(c=>norm(c.name).includes(norm('عشور')));
+  const cat=T.cat||(named?named.id:'');
+  sheet(`<h2>⛪ متابعة العشور</h2>
+    <p class="lede">التطبيق بيحسب كل شهر النسبة دي من دخلك، ويقارنها باللي سجلته في تصنيف العشور.</p>
+    <div class="f"><div class="row2">
+      <div><label>النسبة %</label><input id="tiP" type="number" inputmode="decimal" min="1" max="100" step="0.5" value="${T.pct||10}"></div>
+      <div><label>من أنهي دخل</label><select id="tiB"><option value="mine" ${T.base!=='all'?'selected':''}>دخلي الشخصي</option><option value="all" ${T.base==='all'?'selected':''}>كله (مع الشقة)</option></select></div></div></div>
+    <div class="f"><label>تصنيف العشور</label><select id="tiC">
+      ${cat?'':'<option value="" selected>➕ اعمل تصنيف «عشور» ⛪</option>'}
+      ${catsOf('exp').map(c=>`<option value="${c.id}" ${c.id===cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
+    <div class="acts">${T.cat?'<button class="del" id="tiOff">إيقاف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}<button class="go" id="tiOk">حفظ</button></div>`);
+  $('#tiOk').onclick=async()=>{
+    let c=$('#tiC').value;
+    if(!c){ const nc={id:uid(),emoji:'⛪',name:'عشور',kind:'exp',order:catsOf('exp').length,budget:0,fixed:true,words:['عشور','العشور','تقدمة','بكور','نذر']};
+      S.cats.push(nc); await Store.put('cats',nc); c=nc.id; }
+    S.settings.tithe={pct:Math.min(100,Math.max(0.5,Number($('#tiP').value)||10)),base:$('#tiB').value,cat:c};
+    await saveSettings(); closeSheet(); renderRep(); renderCats(); toast('تم — متابعة العشور شغالة');
+  };
+  if($('#tiOff')) $('#tiOff').onclick=async()=>{ delete S.settings.tithe; await saveSettings(); closeSheet(); renderRep(); toast('اتوقفت'); };
+}
+function tithePaySheet(){
+  const m=titheMonth(today().slice(0,7)), T=S.settings.tithe;
+  sheet(`<h2>⛪ سجّل عشور</h2>
+    <div class="f"><div class="row2">
+      <div><label>المبلغ</label><input id="tpA" type="number" inputmode="decimal" min="0" step="1" value="${Math.round(Math.max(0,m.left))}"></div>
+      <div><label>من حساب</label><select id="tpV">${acctOpts(defAcct())}</select></div></div></div>
+    <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="tpOk">سجّل</button></div>`);
+  $('#tpOk').onclick=async()=>{ const a=Number($('#tpA').value); if(!(a>0)) return $('#tpA').focus();
+    if(!okToTake($('#tpV').value,a)) return;
+    closeSheet(); await commit({kind:'exp',amount:a,cat:T.cat,acct:$('#tpV').value,note:'عشور',date:today()}); renderRep(); };
+}
+
+/* ═══════ family: who an expense was for ═══════ */
+const people=()=>S.settings.people||(S.settings.people=[]);
+const personOf=id=>people().find(p=>p.id===id);
+const personLbl=id=>{ const p=personOf(id); return p?`${p.emoji||'👤'} ${p.name}`:''; };
+/* a note that names one person («علاج مرثا») picks them; naming two («انا ومرثا») picks nobody — it was for both */
+function guessWho(note){
+  const n=' '+norm(note||'').replace(/[^\p{L}\p{N}]+/gu,' ')+' ';
+  const hit=people().filter(p=>p.name&&(n.includes(' '+norm(p.name)+' ')||n.includes(' و'+norm(p.name)+' ')));
+  return hit.length===1?hit[0].id:'';
+}
+function whoField(val,kind,id='fWho'){
+  if(!people().length || (kind!=='exp'&&kind!=='ref')) return '';
+  return `<div class="f"><label>لمين؟</label><select id="${id}"><option value="">— مش لحد معيّن —</option>
+    ${people().map(p=>`<option value="${p.id}" ${p.id===val?'selected':''}>${esc(p.emoji||'👤')} ${esc(p.name)}</option>`).join('')}</select></div>`;
+}
+function peopleCard(mk,sc){
+  if(!people().length) return '';
+  const exp=inMonth(mk,'exp',sc), ref=inMonth(mk,'ref',sc);
+  const by={}; exp.forEach(t=>by[t.who||'']=(by[t.who||'']||0)+t.amount); ref.forEach(t=>by[t.who||'']=(by[t.who||'']||0)-t.amount);
+  const rows=[...people().map(p=>[p.id,by[p.id]||0]),['',by['']||0]].filter(([,v])=>v>0.005);
+  if(!rows.some(([k])=>k)) return `<div class="card"><h3>👨‍👩‍👧 مصاريف كل فرد${qh('people')}</h3><div class="foot" style="margin:0">لما تسجّل مصروف، اختار «لمين؟» في التفاصيل (✎) — أو اكتب الاسم في الملاحظة.</div></div>`;
+  const max=Math.max(...rows.map(r=>r[1]));
+  return `<div class="card"><h3>👨‍👩‍👧 مصاريف كل فرد${qh('people')}</h3>${rows.map(([k,v])=>`<div class="brow">
+      <div class="top"><span class="l"><span class="t">${k?esc(personLbl(k)):'مش متحدد / للبيت'}</span><span class="pct">${Math.round(v/Math.max(1,exp.reduce((s,t)=>s+t.amount,0)-ref.reduce((s,t)=>s+t.amount,0))*100)}%</span></span><span class="r">${money(v)}</span></div>
+      <div class="bar"><i style="width:${v/max*100}%;background:${k?'var(--iris)':'var(--dim)'}"></i></div></div>`).join('')}</div>`;
+}
+function peopleSheet(){
+  const list=people();
+  sheet(`<h2>أفراد العيلة</h2>
+    <p class="lede">علشان تعرف كل واحد بيتصرف عليه كام. اكتب الاسم زي ما بتكتبه في الملاحظات («مرثا»، «لولو») والتطبيق يختاره لوحده.</p>
+    <div id="pplL">${list.map((p,i)=>`<div class="row2" style="margin-bottom:8px;grid-template-columns:64px 1fr 40px">
+      <input data-pe="${i}" maxlength="3" value="${esc(p.emoji||'👤')}" style="text-align:center;font-size:20px">
+      <input data-pn="${i}" maxlength="20" value="${esc(p.name)}"><button type="button" data-px="${i}" style="color:var(--red);font-size:18px">×</button></div>`).join('')}</div>
+    <div class="row2" style="grid-template-columns:64px 1fr"><input id="pplE" maxlength="3" value="👤" style="text-align:center;font-size:20px"><input id="pplN" maxlength="20" placeholder="اسم جديد (مثلاً: مرثا)"></div>
+    <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="pplOk">حفظ</button></div>`);
+  const sh=$('#sheet'); const drop=new Set();
+  sh.querySelectorAll('[data-px]').forEach(b=>b.onclick=()=>{ drop.add(+b.dataset.px); b.parentElement.style.opacity=.35; });
+  $('#pplOk').onclick=async()=>{
+    const next=list.map((p,i)=>drop.has(i)?null:{...p,emoji:sh.querySelector(`[data-pe="${i}"]`).value.trim()||'👤',name:sh.querySelector(`[data-pn="${i}"]`).value.trim()}).filter(p=>p&&p.name);
+    const n=$('#pplN').value.trim(); if(n) next.push({id:uid(),name:n,emoji:$('#pplE').value.trim()||'👤'});
+    S.settings.people=next; await saveSettings();
+    /* old entries whose note names someone can be tagged in one go */
+    /* ones the app tagged by itself are looked at again with the new list (a second name can make it «both») */
+    const redo=S.tx.filter(t=>t.whoAuto&&t.who!==guessWho(t.note));
+    for(const t of redo){ const w=guessWho(t.note); if(w) t.who=w; else { delete t.who; delete t.whoAuto; } }
+    if(redo.length) await Store.batch(redo.map(t=>['put','tx',t]));
+    const old=S.tx.filter(t=>(t.kind==='exp'||t.kind==='ref')&&!t.who&&guessWho(t.note));
+    let tagged=0;
+    if(old.length&&confirm(`فيه ${old.length} مصروف قديم مكتوب في ملاحظته اسم حد من العيلة.\nأعلّمهم باسمه؟`)){
+      for(const t of old){ t.who=guessWho(t.note); t.whoAuto=1; } await Store.batch(old.map(t=>['put','tx',t])); tagged=old.length; }
+    closeSheet(); renderSet(); renderRep(); renderLog(); toast(tagged?`تم — واتعلّم ${tagged} مصروف قديم`:'تم');
+  };
+}
+
 /* ═══════ spending habits: the usual month and a limit per category ═══════ */
 const catTotals=(mk,sc)=>{ const by={};
   inMonth(mk,'exp',sc).forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amount);
@@ -3719,6 +3851,11 @@ function renderSet(){
         <span class="hint">${balTxt(a)}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>
       <button class="ghost" id="addAcc2">+ حساب جديد</button></div>`:''}
 
+    <div class="sec"><h2>أفراد العيلة<button id="pplBtn">${people().length?'تعديل':'+ أضف'}</button></h2>
+      <div class="list"><div class="item" style="font-size:13px;color:var(--dim);line-height:1.6">${people().length?people().map(p=>`${esc(p.emoji||'👤')} ${esc(p.name)}`).join(' · ')
+        :'ضيف أسامي العيلة (انت، مرثا، لولو…) وتعرف كل واحد بيتصرف عليه كام.'}</div></div></div>
+    ${PRO()||S.settings.tithe?`<div class="sec"><h2>⛪ العشور<button id="tiBtn">${titheOn()?'تعديل':'فعّل'}</button></h2>
+      <div class="list"><div class="item" style="font-size:13px;color:var(--dim)">${titheOn()?`${S.settings.tithe.pct}% من ${S.settings.tithe.base==='all'?'الدخل كله':'دخلك الشخصي'} · تصنيف ${esc(catOf(S.settings.tithe.cat).name)}`:'متابعة النسبة اللي بتطلّعها من دخلك كل شهر.'}</div></div></div>`:''}
     <div class="sec"><h2>تصنيفات المصاريف<button id="fvBtn">أساسي/كماليات</button></h2>
       <div class="list">${catList('exp')}</div>
       <button class="ghost" data-add="exp">+ تصنيف مصروف</button></div>
@@ -3791,6 +3928,8 @@ function renderSet(){
   });
   $('#budBtn').onclick=budgetSheet;
   $('#fvBtn').onclick=fixedSheet;
+  $('#pplBtn').onclick=peopleSheet;
+  if($('#tiBtn')) $('#tiBtn').onclick=titheSetup;
   $('#setCur').onchange=async e=>{
     S.settings.cur=e.target.value.trim()||'ج'; await saveSettings();
     renderRail(); renderReadout(); renderSet(); toast('اتحدثت العملة');
@@ -3953,11 +4092,11 @@ function download(name,text,type){
 function exportCsv(){
   if(!S.tx.length) return toast('مفيش بيانات للتصدير');
   const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
-  const head=['التاريخ','النوع','التصنيف','الحساب','إلى حساب','المبلغ','العملة الأصلية','المبلغ الأصلي','ملاحظة','شخصي / إيجارات','الوحدة','آجل لـ','آجل فاضل'].map(q).join(',');
+  const head=['التاريخ','النوع','التصنيف','الحساب','إلى حساب','المبلغ','العملة الأصلية','المبلغ الأصلي','ملاحظة','شخصي / إيجارات','الوحدة','آجل لـ','آجل فاضل','لمين'].map(q).join(',');
   const val=t=>t.kind==='inc'||t.kind==='ref'?t.amount:t.kind==='trf'?0:-t.amount;
   const body=[...S.tx].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>
     [t.date,KINDS[t.kind].label,t.kind==='trf'?'':catOf(t.cat).name,acctOf(t.acct).name,
-     t.toAcct?acctOf(t.toAcct).name:'',val(t),t.ccy||'',t.raw||'',t.note||'',isBiz(t)?'إيجارات':'شخصي',unitName(t.unitId),t.credit?(t.credit.vendor||'آجل'):'',t.credit?creditLeft(t):''].map(q).join(',')).join('\n');
+     t.toAcct?acctOf(t.toAcct).name:'',val(t),t.ccy||'',t.raw||'',t.note||'',isBiz(t)?'إيجارات':'شخصي',unitName(t.unitId),t.credit?(t.credit.vendor||'آجل'):'',t.credit?creditLeft(t):'',personOf(t.who)?personOf(t.who).name:''].map(q).join(',')).join('\n');
   let csv=head+'\n'+body;
   csv+='\n\n'+['الحسابات','الاسم','النوع','الرصيد'].map(q).join(',')+'\n'+
        S.accts.map(a=>['',a.name+(a.ccy?` (${a.ccy})`:''),a.type==='cash'?'كاش':'بنك',balance(a.id)+(a.ccy?` ${a.ccy} ≈ ${Math.round(balanceBase(a.id))}`:'')].map(q).join(',')).join('\n');
