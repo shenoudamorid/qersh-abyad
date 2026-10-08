@@ -624,7 +624,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=58;
+const APP_VER=59;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -950,10 +950,8 @@ function applyMode(){
   if(!Store.persistent){ $('#memWarn').hidden=false; return; }
   persisted=await Store.persist();
   if(!S.tx.length && !S.settings.welcomed && !(S.settings.lock&&S.settings.lock.pin)) setTimeout(welcome,400);
-  /* once: kids things sitting in other categories, now that a person has a category of their own */
-  if(!S.settings.pinAsked && catPins().length){ const mv=pinMoves();
-    if(mv.length) setTimeout(()=>{ if((!$('#lock')||$('#lock').hidden)&&!$('#sheet').classList.contains('on')) pinMoveSheet(mv,async()=>{ S.settings.pinAsked=1; await saveSettings(); }); },1600);
-    else { S.settings.pinAsked=1; await saveSettings(); } }
+  /* once: put old entries where today's rules would have put them, then say what moved */
+  const td=await autoTidy(); if(td) showTidyWhenFree(td);
   const nag=backupNag(); if(nag) setTimeout(()=>{ if(!$('#lock')||$('#lock').hidden) toast(nag,exportJson,'خُد نسخة'); },1200);
 })();
 
@@ -2449,6 +2447,7 @@ function yearCard(sc){
     ${avg?`<div class="foot">متوسط مصاريفك الشهري <b>${money0(avg)}</b> ${esc(S.settings.cur)}</div>`:''}</div>`;
 }
 /* ═══════ tithe: a share of the month's income set aside, against what was actually given ═══════ */
+const TITHE_W=['عشور','العشور','عشور الكنيسة','تقدمة','بكور','نذر','صندوق كنيسة','طبق الكنيسة'];
 const titheOn=()=>!!(S.settings.tithe&&S.settings.tithe.cat&&catOf(S.settings.tithe.cat).id);
 function titheMonth(mk){
   const T=S.settings.tithe, base=T.base==='all'?'all':MINE();
@@ -2490,7 +2489,7 @@ function titheSetup(){
       S.cats.push(nc); await Store.put('cats',nc); c=nc.id; }
     S.settings.tithe={pct:Math.min(100,Math.max(0.5,Number($('#tiP').value)||10)),base:$('#tiB').value,cat:c};
     /* tithe words belong to the tithe category, so «عشور الكنيسة ٢٠٠» lands there and not in «أخرى» */
-    const TW=['عشور','العشور','عشور الكنيسة','تقدمة','بكور','نذر','صندوق كنيسة','طبق الكنيسة'], isTW=w=>TW.includes(String(w).trim());
+    const TW=TITHE_W, isTW=w=>TW.includes(String(w).trim());
     for(const x of S.cats){ if(x.kind!=='exp') continue;
       const before=(x.words||[]).length;
       x.words=x.id===c?[...new Set([...(x.words||[]),...TW])]:(x.words||[]).filter(w=>!isTW(w));
@@ -2616,6 +2615,70 @@ function peopleSheet(){
       for(const t of old){ t.who=autoWho(t.note,t.cat); t.whoAuto=1; } await Store.batch(old.map(t=>['put','tx',t])); tagged=old.length; }
     closeSheet(); renderSet(); renderRep(); renderLog(); toast(tagged?`تم — واتعلّم ${tagged} مصروف قديم`:'تم');
     const mv=pinMoves(); if(mv.length) setTimeout(()=>{ if(!$('#sheet').classList.contains('on')) pinMoveSheet(mv); },450);
+  };
+}
+
+/* ═══════ one-time tidy: old entries follow today's rules (tithe, a kid's category, the motorcycle) ═══════
+   Runs once per device. Everything it changes is kept so one tap puts it all back. */
+const TIDY_V=1;
+async function autoTidy(){
+  if((S.settings.tidyV||0)>=TIDY_V) return null;
+  const copy=x=>JSON.parse(JSON.stringify(x)), U={tx:new Map(),cats:new Map(),recur:new Map(),newCat:null}, moved=[], notes=[];
+  const keep=(m,x)=>{ if(!m.has(x.id)) m.set(x.id,copy(x)); };
+  const movable=t=>(t.kind==='exp'||t.kind==='ref')&&!t.stay;
+  const move=(t,to)=>{ if(t.cat===to) return; keep(U.tx,t); moved.push({id:t.id,from:t.cat,to}); t.cat=to;
+    if(!t.who){ const w=autoWho(t.note,to); if(w){ t.who=w; t.whoAuto=1; } } };
+  const setWords=(c,w)=>{ if(w.length!==(c.words||[]).length){ keep(U.cats,c); c.words=w; } };
+  /* tithe: its words live in its category, and entries/fixed items named so go there */
+  if(titheOn()){ const T=S.settings.tithe.cat, pins=[{cat:T,words:TITHE_W}];
+    for(const c of catsOf('exp')) setWords(c,c.id===T?[...new Set([...(c.words||[]),...TITHE_W])]:(c.words||[]).filter(w=>!TITHE_W.includes(String(w).trim())));
+    for(const t of S.tx) if(movable(t)&&pinCat(t.note,pins)===T) move(t,T);
+    for(const r of S.recur) if(r.kind==='exp'&&r.cat!==T&&pinCat(r.note,pins)===T){ keep(U.recur,r); r.cat=T; notes.push(`المصروف الثابت «${r.note}» بقى على ${catOf(T).emoji} ${catOf(T).name}`); } }
+  /* a family member's name isn't another category's keyword («لولو» in أكل وشرب) */
+  for(const p of people()) if(p.cat) for(const c of catsOf('exp')) if(c.id!==p.cat) setWords(c,(c.words||[]).filter(w=>norm(w)!==norm(p.name)));
+  /* kids things to the kid's category */
+  for(const m of pinMoves()) move(m.t,m.to);
+  /* notes about the motorcycle and no category for it yet → make one and take its words from مواصلات */
+  const P=CAT_PRESETS[0], pn=new Set(P.names.map(stripAl));
+  if(!catsOf('exp').some(c=>catPreset(c.name)) && S.tx.some(t=>movable(t)&&tokOf(t.note||'').map(stripAl).some(x=>pn.has(x)))){
+    const nc={id:uid(),emoji:P.emoji,name:'الموتوسيكل',kind:'exp',order:S.cats.length,budget:0,fixed:false,words:[...P.words]};
+    S.cats.push(nc); U.newCat=nc.id; notes.push(`عملت تصنيف ${nc.emoji} ${nc.name}: البنزين والزيت والصيانة بقوا فيه، والمواصلات فضل فيها اوبر وتاكسي وميكروباص`);
+    for(const o of catsOf('exp')) if(o.id!==nc.id) setWords(o,stealWords(o.words,P.words,P.names));
+    const pins=catPins();
+    for(const t of S.tx) if(movable(t)&&!t.auto&&t.note){ const g=guessCat(t.note,catsOf('exp'),pins); if(g&&g.id===nc.id) move(t,nc.id); }
+  }
+  const ops=[...[...U.tx.keys()].map(id=>['put','tx',S.tx.find(t=>t.id===id)]),
+    ...[...U.cats.keys()].map(id=>['put','cats',S.cats.find(c=>c.id===id)]),
+    ...[...U.recur.keys()].map(id=>['put','recur',S.recur.find(r=>r.id===id)]),
+    ...(U.newCat?[['put','cats',S.cats.find(c=>c.id===U.newCat)]]:[])];
+  if(ops.length) await Store.batch(ops);
+  S.settings.tidyV=TIDY_V; S.settings.pinAsked=1; await saveSettings();
+  if(!moved.length&&!notes.length) return null;
+  renderCats(); renderQuick(); renderRail(); renderLog(); renderRep();
+  return {U,moved,notes};
+}
+function showTidyWhenFree(td,tries=0){
+  setTimeout(()=>{ const busy=($('#lock')&&!$('#lock').hidden)||$('#sheet').classList.contains('on');
+    if(busy) return tries<120&&showTidyWhenFree(td,tries+1); tidySheet(td); },tries?1000:1600);
+}
+function tidySheet({U,moved,notes}){
+  const tx=id=>S.tx.find(t=>t.id===id);
+  sheet(`<h2>✨ رتّبت حاجاتك</h2>
+    <p class="lede">التطبيق نقل المصاريف القديمة للمكان الصح لوحده، علشان التقارير تبقى مظبوطة. مش محتاج تعمل حاجة.</p>
+    ${notes.map(n=>`<div class="banner" style="margin:0 0 8px">${esc(n)}</div>`).join('')}
+    ${moved.length?`<div class="list">${moved.map(m=>{ const t=tx(m.id); return t?`<div class="item"><span class="nm">${esc(t.note||catOf(t.cat).name)}
+      <small>${catOf(m.from).emoji} ${esc(catOf(m.from).name)} ← ${catOf(m.to).emoji} ${esc(catOf(m.to).name)}${t.who?` · ${esc(personLbl(t.who))}`:''}</small></span>
+      <span class="hint num">${money0(t.amount)}</span></div>`:''; }).join('<div class="perf"></div>')}</div>`:''}
+    <div class="acts"><button class="no" id="tdBack">رجّعهم زي ما كانوا</button><button class="go" onclick="closeSheet()">تمام</button></div>`);
+  $('#tdBack').onclick=async()=>{
+    const ops=[];
+    for(const [id,o] of U.tx){ const i=S.tx.findIndex(t=>t.id===id); if(i>=0){ S.tx[i]=o; ops.push(['put','tx',o]); } }
+    for(const [id,o] of U.cats){ const i=S.cats.findIndex(c=>c.id===id); if(i>=0){ S.cats[i]=o; ops.push(['put','cats',o]); } }
+    for(const [id,o] of U.recur){ const i=S.recur.findIndex(r=>r.id===id); if(i>=0){ S.recur[i]=o; ops.push(['put','recur',o]); } }
+    await Store.batch(ops);
+    if(U.newCat&&!S.tx.some(t=>t.cat===U.newCat)){ await Store.del('cats',U.newCat); S.cats=S.cats.filter(c=>c.id!==U.newCat);
+      if(S.draft.cat===U.newCat) S.draft.cat=catsOf('exp')[0].id; }
+    closeSheet(); renderCats(); renderQuick(); renderRail(); renderLog(); renderRep(); renderSet(); toast('رجعوا زي ما كانوا');
   };
 }
 
@@ -4508,6 +4571,7 @@ async function restoreFrom(text){
     await migrateRental();
     if(linkPeople()) await saveSettings(); await tagByCat();
     if(!(d.settings&&d.settings.wordsSeeded)) delete S.settings.wordsSeeded;
+    if(!(d.settings&&d.settings.tidyV)) delete S.settings.tidyV;
     await seedWords();
     S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;
     S.lastCat.ref=S.lastCat.exp;
@@ -4517,6 +4581,7 @@ async function restoreFrom(text){
     S.draft.toAcct=(liveAccts()[1]||liveAccts()[0]).id;
     applyTheme(); applyMode();
     renderAccts(); renderCats(); renderQuick(); renderSet(); renderRail(); renderReadout(); renderLog(); renderWal();
+    const td=await autoTidy(); if(td) showTidyWhenFree(td);
     alert(`اترجعت البيانات ✅\n${n} حركة${S.stays.length?` · ${S.stays.length} حجز`:''}${S.accts.length?` · ${S.accts.length} حساب`:''}${skipped?`\n(${skipped} سطر بايظ في الملف اتساب)`:''}`);
     go('log');
   }
