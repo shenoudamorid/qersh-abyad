@@ -597,3 +597,14 @@ test('a family member\'s name or a kids word pins the category', () => {
   assert.equal(L.guessCat('شامبو', exp, pins).id, 'home');
   assert.equal((L.guessCat('هدوم اطفال', exp) || {}).id === 'kid', false); // no pins → keywords as before
 });
+
+test('a «الموتوسيكل» category takes the vehicle words from مواصلات, and only from there', () => {
+  const P = L.catPreset('الموتوسيكل');
+  assert.ok(P); assert.ok(L.catPreset('موتسكل بتاعي')); assert.equal(L.catPreset('مواصلات'), null);
+  const tr = L.stealWords(L.CAT_WORDS['مواصلات'], P.words, P.names);
+  for (const w of ['بنزين', 'تغيير زيت', 'بنزين الموتوسيكل', 'كاوتش جديد']) assert.ok(!tr.includes(w), w);
+  for (const w of ['اوبر', 'تاكسي', 'ميكروباص', 'مترو', 'غسيل العربية']) assert.ok(tr.includes(w), w);
+  assert.ok(L.stealWords(L.CAT_WORDS['ترفيه'], P.words, P.names).includes('ولاعة بنزين'));
+  assert.ok(L.stealWords(L.CAT_WORDS['أكل وشرب'], P.words, P.names).includes('زيت'));
+  assert.ok(L.stealWords(L.CAT_WORDS['بيت ومعيشة'], P.words, P.names).includes('صيانة'));
+});
