@@ -130,6 +130,17 @@ function debtFlows(d){
    counted as expenses again. */
 const creditPaid=t=>((t.credit&&t.credit.pays)||[]).reduce((s,p)=>s+p.amount,0);
 const creditLeft=t=>!t.credit||t.credit.settledAt?0:Math.max(0,t.amount-creditPaid(t));
+/* one payment to a shop or tradesman you owe for several things: it settles the oldest first.
+   items: [{id, left, date, at}] → [{id, amount}] (what goes to each; never more than it still owes) */
+function allocatePayment(items,amount){
+  const out=[]; let rest=amount;
+  for(const it of items.slice().sort((a,b)=>a.date.localeCompare(b.date)||(a.at||0)-(b.at||0))){
+    if(rest<=0.005) break;
+    const a=Math.min(it.left,rest); if(a<=0.005) continue;
+    out.push({id:it.id,amount:Math.round(a*100)/100}); rest-=a;
+  }
+  return out;
+}
 const creditFlows=t=>t.credit?(t.credit.pays||[]).filter(p=>p.acct).map(p=>({acct:p.acct,date:p.date,at:p.at,amount:-p.amount})):[];
 
 /* ═══════ nightly stays ═══════ */
@@ -1039,6 +1050,6 @@ function repairBackup(raw){
 
 if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextMonth,addDays,daysElapsed,
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
-  debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
+  debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,allocatePayment,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
   parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup};
