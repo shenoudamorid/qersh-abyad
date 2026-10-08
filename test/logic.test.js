@@ -578,3 +578,22 @@ test('an English account name answers to its Arabic sound', () => {
   assert.equal(r.amount, 100); assert.equal(r.acct, 'v'); assert.equal(r.cat, 't'); assert.equal(r.note, 'بنزين');
   assert.equal(L.parseSentence('50 اكل cash', { ...ctx, accts: [{ id: 'c', name: 'Cash' }, { id: 'v', name: 'فيزا' }] }).acct, 'c');
 });
+
+test('a family member\'s name or a kids word pins the category', () => {
+  const exp = [{ id: 'food', name: 'أكل وشرب', words: ['لولو', 'ماركت'] }, { id: 'home', name: 'بيت ومعيشة', words: ['شامبو', 'مناديل'] },
+    { id: 'kid', name: 'لولو', words: ['بامبرز'] }, { id: 'health', name: 'صحة', words: ['علاج'] }];
+  const pins = [{ cat: 'kid', words: ['لولو'] }, { cat: 'kid', words: L.KID_W }];
+  const ctx = { accts: [{ id: 'c', name: 'كاش' }], expCats: exp, incCats: [{ id: 'sal', name: 'المرتب', words: [] }], pro: false, lastCat: {}, acct: 'c', pins };
+  const cat = x => L.parseSentence(x, ctx).cat;
+  assert.equal(cat('علاج لولو 50'), 'kid');
+  assert.equal(cat('200 لولو'), 'kid');
+  assert.equal(cat('شامبو اطفال 90'), 'kid');
+  assert.equal(cat('شامبو للبيبي 90'), 'kid');
+  assert.equal(cat('مناديل والبامبرز 300'), 'kid');
+  assert.equal(cat('شامبو 60'), 'home');            // nothing kid about it
+  assert.equal(cat('علاج 60'), 'health');
+  assert.equal(cat('لولوه 60') === 'kid', false);    // part of a longer word doesn't count
+  assert.equal(L.guessCat('هدوم اطفال', exp, pins).id, 'kid');
+  assert.equal(L.guessCat('شامبو', exp, pins).id, 'home');
+  assert.equal((L.guessCat('هدوم اطفال', exp) || {}).id === 'kid', false); // no pins → keywords as before
+});
