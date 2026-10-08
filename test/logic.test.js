@@ -561,3 +561,20 @@ test('buildXlsx writes a valid zip with right-to-left sheets', () => {
   assert.ok(text.includes('a&amp;&lt;b&gt;'));
   assert.ok(text.includes('name="a b"'));                   // sheet names can't hold /
 });
+
+test('splitEntries cuts one dictated sentence into entries', () => {
+  assert.deepEqual(L.splitEntries('خمسين أكل كاش، وكمان مية بنزين فيزا'), ['خمسين أكل كاش', 'مية بنزين فيزا']);
+  assert.deepEqual(L.splitEntries('50 اكل\n\n 30 مواصلات , 20 عيش'), ['50 اكل', '30 مواصلات', '20 عيش']);
+  assert.deepEqual(L.splitEntries('‏75 كهربا‏'), ['75 كهربا']);
+  assert.deepEqual(L.splitEntries(''), []);
+  assert.deepEqual(L.splitEntries(null), []);
+});
+
+test('an English account name answers to its Arabic sound', () => {
+  const accts = [{ id: 'c', name: 'كاش' }, { id: 'v', name: 'Visa' }];
+  const cats = [{ id: 'f', name: 'أكل وشرب', words: [] }, { id: 't', name: 'مواصلات', words: ['بنزين'] }];
+  const ctx = { accts, expCats: cats, incCats: [], pro: false, lastCat: {}, acct: 'c' };
+  const r = L.parseSentence('مية بنزين فيزا', ctx);
+  assert.equal(r.amount, 100); assert.equal(r.acct, 'v'); assert.equal(r.cat, 't'); assert.equal(r.note, 'بنزين');
+  assert.equal(L.parseSentence('50 اكل cash', { ...ctx, accts: [{ id: 'c', name: 'Cash' }, { id: 'v', name: 'فيزا' }] }).acct, 'c');
+});

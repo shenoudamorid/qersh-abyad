@@ -397,6 +397,11 @@ details.more>summary::-webkit-details-marker{display:none}
 #toast .undo{background:var(--ink);color:var(--chalk);padding:6px 12px;border-radius:999px;font-size:12px;
        font-weight:600;flex:none}
 
+#siriBar{position:fixed;top:calc(var(--sat) + 10px);left:50%;transform:translateX(-50%);z-index:59;display:flex;gap:6px;align-items:center;
+       background:var(--chalk);color:var(--ink);border-radius:999px;padding:6px;box-shadow:var(--shadow);max-width:calc(100vw - 28px)}
+#siriBar[hidden]{display:none}
+#siriBar button{background:none;color:inherit;font:inherit;font-size:14px;font-weight:600;padding:8px 12px;border-radius:999px}
+#siriBar #siriGo{background:var(--ink);color:var(--chalk)}
 #lock{position:fixed;inset:0;z-index:80;background:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;
       padding:calc(var(--sat) + 20px) 24px calc(var(--sab) + 20px);gap:18px}
 #lock img{width:72px;height:72px;border-radius:18px;box-shadow:0 10px 30px color-mix(in srgb,var(--brand) 30%,transparent)}
@@ -609,6 +614,7 @@ details.more>summary::-webkit-details-marker{display:none}
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet"></div>
 <div id="toast"></div>
+<div id="siriBar" hidden><button id="siriGo">🎙 سجّل اللي قلته لـ Siri</button><button id="siriX" aria-label="اقفل">✕</button></div>
 <div id="lock" hidden></div>
 <div id="printArea"></div>
 <div id="memWarn" role="alert" hidden>التخزين مش شغال — أي حاجة هتسجلها هتضيع لما تقفل التطبيق. اقفله وافتحه تاني.</div>
@@ -617,7 +623,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=55;
+const APP_VER=56;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -903,7 +909,7 @@ function applyMode(){
     if(ch) await Store.put('tx',t);
   }
   sortTx();
-  await migrateRental();
+  await migrateRental(); await seedWords();
   /* once: drop the invisible direction marks the iPhone keyboard left in notes */
   if(!S.settings.cleanNotes){
     const dirty=S.tx.filter(t=>t.note&&cleanText(t.note)!==t.note);
@@ -937,6 +943,7 @@ function applyMode(){
   await autoSnapshot();
   lastDay=today();
   buildKeys(); applyMode(); renderAccts(); renderCats(); renderQuick(); renderRail(); renderReadout();
+  siriOffer();
 
   if(!Store.persistent){ $('#memWarn').hidden=false; return; }
   persisted=await Store.persist();
@@ -1534,6 +1541,7 @@ $('#nlBtn').addEventListener('click',()=>{
     <p class="lede">اكتب أو قول المبلغ والتصنيف والحساب في سطر واحد. مثال: <b>٥٠ أكل كاش</b> أو <b>خمسين شاورما فيزا</b>.</p>
     <div class="f" style="display:flex;gap:8px"><input id="nlIn" placeholder="50 أكل كاش" autocomplete="off">
       ${SR||IOS?'<button class="mini" id="nlMic" aria-label="اتكلم" style="height:auto;width:50px"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>':''}</div>
+    <button class="ghost" id="nlPaste" style="margin:0 0 10px">📋 الصق اللي قلته لـ Siri</button>
     <div id="nlHint" class="banner" style="margin:0 0 12px" hidden></div>
     <div id="nlOut" style="font-size:13px;color:var(--dim);min-height:22px"></div>
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
@@ -1545,6 +1553,12 @@ $('#nlBtn').addEventListener('click',()=>{
       : 'اكتب رقم على الأقل';
   };
   $('#nlIn').oninput=upd;
+  $('#nlPaste').onclick=async()=>{
+    const parts=splitEntries(await readClip());
+    if(parts.length>1) return siriMany(parts);
+    if(!parts.length) return kbMic('مقدرتش أقرا اللي اتنسخ — دوس جوه الخانة دوسة طويلة واختار «لصق».');
+    $('#nlIn').value=parts[0]; upd();
+  };
   /* the keyboard's own dictation always works, so that's the fallback for every failure */
   const kbMic=msg=>{
     $('#nlHint').innerHTML=msg+'<br>دوس على <b>🎤</b> اللي في الكيبورد (جنب المسافة) واتكلم — بيكتب في الخانة على طول.';
@@ -1592,6 +1606,57 @@ $('#nlBtn').addEventListener('click',()=>{
     await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{})});
   };
 });
+
+/* ── Siri: a Shortcut dictates and copies the sentence, the app pastes it (iPhone can't hand text
+   to a home-screen app directly, and reading the clipboard needs a tap) ── */
+async function readClip(){ try{ return await navigator.clipboard.readText(); }catch(e){ return ''; } }
+async function siriPaste(){
+  $('#siriBar').hidden=true;
+  const parts=splitEntries(await readClip());
+  if(!parts.length){ $('#nlBtn').click(); $('#nlHint').innerHTML='مقدرتش أقرا اللي اتنسخ — دوس جوه الخانة دوسة طويلة واختار «لصق».'; $('#nlHint').hidden=false; return; }
+  if(parts.length>1) return siriMany(parts);
+  $('#nlBtn').click(); $('#nlIn').value=parts[0]; $('#nlIn').dispatchEvent(new Event('input'));
+}
+function siriMany(parts){
+  const ps=parts.map(x=>({x,p:parseEntry(x)})), cur=esc(S.settings.cur);
+  sheet(`<h2>🎙 ${ps.length} حاجات</h2><p class="lede">شيل العلامة من اللي مش عايزه.</p>
+    <div class="list">${ps.map(({x,p},i)=>`<label class="item" style="gap:10px"><input type="checkbox" data-si="${i}" ${p?'checked':'disabled'} style="width:20px;height:20px;flex:none">
+      <span class="nm">${p?`${catOf(p.cat).emoji} ${esc(catOf(p.cat).name)} · ${esc(acctOf(p.acct).name)}`:'مفيهاش رقم'}<small>${esc(x)}</small></span>
+      ${p?`<span class="hint num" style="color:${p.kind==='inc'?'var(--mint)':'inherit'}">${money(p.amount)} ${cur}</span>`:''}</label>`).join('<div class="perf"></div>')}</div>
+    <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button><button class="go" id="siOk">سجّل</button></div>`);
+  $('#siOk').onclick=async()=>{
+    const pick=[...document.querySelectorAll('[data-si]:checked')].map(c=>ps[+c.dataset.si].p);
+    closeSheet();
+    for(const p of pick){ const w=(p.kind==='exp'||p.kind==='ref')?guessWho(p.note):'';
+      await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{})}); }
+    if(pick.length>1) toast(`اتسجلوا ${pick.length}`);
+  };
+}
+let siriT=0;
+function siriOffer(){
+  if(!S.settings.siri) return;
+  $('#siriBar').hidden=false; clearTimeout(siriT); siriT=setTimeout(()=>{ $('#siriBar').hidden=true; },45000);
+}
+$('#siriGo').onclick=siriPaste;
+$('#siriX').onclick=()=>{ $('#siriBar').hidden=true; };
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) $('#siriBar').hidden=true; else siriOffer(); });
+function siriSheet(){
+  sheet(`<h2>🎙 التسجيل بـ Siri</h2>
+    <p class="lede">تقول «يا Siri سجّل مصروف» وبعدين «خمسين أكل كاش»، وتفتح التطبيق وتدوس زرار واحد.</p>
+    <div class="card" style="box-shadow:none;font-size:14px;line-height:1.9"><h3>اعمل الاختصار مرة واحدة</h3>
+      ١. افتح تطبيق <b>الاختصارات</b> (Shortcuts) ← <b>+</b> ← سمّيه <b>سجّل مصروف</b> (ده اللي هتقوله لـ Siri).<br>
+      ٢. ضيف <b>إملاء النص</b> (Dictate Text) واختار اللغة <b>العربية</b>.<br>
+      ٣. ضيف <b>نسخ إلى الحافظة</b> (Copy to Clipboard).<br>
+      ٤. ضيف <b>إظهار إشعار</b> (Show Notification) واكتب فيه: <b>اتنسخ — افتح قرش أبيض</b>.<br>
+      ٥. خلاص. قول «يا Siri سجّل مصروف»، وبعدين افتح التطبيق ودوس <b>🎙 سجّل اللي قلته لـ Siri</b> اللي بيظهر فوق.</div>
+    <div class="foot" style="margin:8px 0">• ممكن تقول كذا حاجة مرة واحدة: «خمسين أكل كاش، وكمان مية بنزين فيزا».<br>
+      • أول مرة الآيفون هيسأل «السماح باللصق؟» ← اختار <b>اسمح</b>.<br>
+      • الآيفون مش بيسمح لـ Siri يكتب جوه التطبيق على طول، علشان كده بننسخ ونلصق. وبتشوف كل حاجة قبل ما تتسجل.</div>
+    <label class="item" style="gap:10px;border-radius:14px;background:var(--ink2)"><input type="checkbox" id="siOn" ${S.settings.siri?'checked':''} style="width:20px;height:20px">
+      <span class="nm">اعرض الزرار لما أفتح التطبيق</span></label>
+    <div class="acts"><button class="go" id="siDone">تمام</button></div>`);
+  $('#siDone').onclick=async()=>{ S.settings.siri=$('#siOn').checked; await saveSettings(); closeSheet(); renderSet(); };
+}
 
 $('#save').addEventListener('click',async()=>{
   const raw=Number(S.draft.amt); if(!(raw>0)) return;
@@ -2418,6 +2483,12 @@ function titheSetup(){
     if(!c){ const nc={id:uid(),emoji:'⛪',name:'عشور',kind:'exp',order:catsOf('exp').length,budget:0,fixed:true,words:['عشور','العشور','تقدمة','بكور','نذر']};
       S.cats.push(nc); await Store.put('cats',nc); c=nc.id; }
     S.settings.tithe={pct:Math.min(100,Math.max(0.5,Number($('#tiP').value)||10)),base:$('#tiB').value,cat:c};
+    /* tithe words belong to the tithe category, so «عشور الكنيسة ٢٠٠» lands there and not in «أخرى» */
+    const TW=['عشور','العشور','عشور الكنيسة','تقدمة','بكور','نذر','صندوق كنيسة','طبق الكنيسة'], isTW=w=>TW.includes(String(w).trim());
+    for(const x of S.cats){ if(x.kind!=='exp') continue;
+      const before=(x.words||[]).length;
+      x.words=x.id===c?[...new Set([...(x.words||[]),...TW])]:(x.words||[]).filter(w=>!isTW(w));
+      if(x.id===c||x.words.length!==before) await Store.put('cats',x); }
     await saveSettings(); closeSheet(); renderRep(); renderCats(); toast('تم — متابعة العشور شغالة');
   };
   if($('#tiOff')) $('#tiOff').onclick=async()=>{ delete S.settings.tithe; await saveSettings(); closeSheet(); renderRep(); toast('اتوقفت'); };
@@ -3063,6 +3134,13 @@ function unitField(val,kind,id='fUnit'){
     <option value="">لا — مصروف شخصي</option>${us.map(u=>`<option value="${esc(u)}" ${u===val?'selected':''}>🏘 ${esc(unitName(u))}</option>`).join('')}</select></div>`;
 }
 /* old data named its unit; give every name an id and tag the income bookings and contracts logged */
+/* categories that came over with no keywords (older versions, old backups) get the built-in
+   ones once, so «بنزين» or «شاورما» find their category; a word removed later stays removed */
+async function seedWords(){
+  if(S.settings.wordsSeeded) return;
+  for(const c of S.cats) if(!(c.words&&c.words.length) && CAT_WORDS[c.name]){ c.words=[...CAT_WORDS[c.name]]; await Store.put('cats',c); }
+  S.settings.wordsSeeded=1; await saveSettings();
+}
 async function migrateRental(){
   const r=migrateUnits({units:allUnits(),stays:S.stays,rents:S.rents,txs:S.tx},uid);
   const ops=[...r.stays.map(x=>['put','stay',x]),...r.rents.map(x=>['put','rent',x]),...r.txs.map(x=>['put','tx',x])];
@@ -3966,6 +4044,8 @@ function renderSet(){
         <span class="hint">${balTxt(a)}</span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>
       <button class="ghost" id="addAcc2">+ حساب جديد</button></div>`:''}
 
+    <div class="sec"><h2>🎙 التسجيل بـ Siri<button id="siriSet">${S.settings.siri?'تعديل':'الطريقة'}</button></h2>
+      <div class="list"><div class="item" style="font-size:13px;color:var(--dim)">${S.settings.siri?'شغّال — قول «يا Siri سجّل مصروف» وافتح التطبيق.':'سجّل مصروف بصوتك من غير ما تفتح التطبيق الأول.'}</div></div></div>
     <div class="sec"><h2>أفراد العيلة<button id="pplBtn">${people().length?'تعديل':'+ أضف'}</button></h2>
       <div class="list"><div class="item" style="font-size:13px;color:var(--dim);line-height:1.6">${people().length?people().map(p=>`${esc(p.emoji||'👤')} ${esc(p.name)}`).join(' · ')
         :'ضيف أسامي العيلة (انت، مرثا، لولو…) وتعرف كل واحد بيتصرف عليه كام.'}</div></div></div>
@@ -4044,6 +4124,7 @@ function renderSet(){
   $('#budBtn').onclick=budgetSheet;
   $('#fvBtn').onclick=fixedSheet;
   $('#pplBtn').onclick=peopleSheet;
+  $('#siriSet').onclick=siriSheet;
   if($('#tiBtn')) $('#tiBtn').onclick=titheSetup;
   $('#setCur').onchange=async e=>{
     S.settings.cur=e.target.value.trim()||'ج'; await saveSettings();
@@ -4351,6 +4432,8 @@ async function restoreFrom(text){
     S.photoIds=new Set(await Store.keys('photo').catch(()=>[]));
     if(!Array.isArray(S.settings.units)) S.settings.units=[];
     await migrateRental();
+    if(!(d.settings&&d.settings.wordsSeeded)) delete S.settings.wordsSeeded;
+    await seedWords();
     S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;
     S.lastCat.ref=S.lastCat.exp;
     S.lastCat.inc=catsOf('inc')[0]&&catsOf('inc')[0].id;
