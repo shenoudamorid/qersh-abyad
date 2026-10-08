@@ -871,6 +871,13 @@ const CAT_WORDS={
 };
 
 /* ctx: {accts, expCats, incCats, pro, lastCat:{exp,inc,ref}, acct} — a category may carry `words` */
+/* an account written in English answers to its Arabic sound too (and back): «Visa» ← «فيزا» */
+const ACCT_ALIAS=[['visa','فيزا'],['cash','كاش'],['bank','بنك'],['master','ماستر'],['mastercard','ماستركارد'],['wallet','محفظة'],['instapay','انستاباي'],['vodafone','فودافون'],['card','كارت'],['credit','كريدت']];
+function acctWords(a){
+  const ws=String(a.name||'').toLowerCase().split(/\s+/), extra=[];
+  for(const [en,ar] of ACCT_ALIAS){ if(ws.includes(en)) extra.push(ar); if(ws.includes(ar)) extra.push(en); }
+  return [a.name,...extra].join(' ');
+}
 function parseSentence(raw,ctx){
   const s=normDigits(String(raw||''));
   const m=s.match(/\d+(\.\d+)?/);
@@ -889,7 +896,7 @@ function parseSentence(raw,ctx){
   const hasW=list=>keys.some((k,i)=>!used[i]&&list.some(w=>tokMatch(k,stripAl(w))));
 
   /* accounts first — their names are the most distinctive */
-  const aM=scoreItems(keys,used,ctx.accts,a=>a.name);
+  const aM=scoreItems(keys,used,ctx.accts,acctWords);
   if(aM.best) aM.hit.forEach(i=>used[i]=true);
 
   const refHit=ctx.pro&&hasW(REF_W), incHit=hasW(INC_W);
@@ -1048,6 +1055,10 @@ function repairBackup(raw){
   return {d,skipped};
 }
 
+/* one dictated or pasted text → the separate entries in it (new lines, commas, «وكمان») */
+const splitEntries=x=>String(x??'').replace(/[‎‏‪-‮⁦-⁩﻿]/g,'')
+  .split(/\r?\n|[،,؛;]|\s+(?:و\s*)?كمان\s+/).map(y=>y.replace(/\s+/g,' ').trim()).filter(Boolean);
+
 /* ═══════ Excel (.xlsx) — a tiny writer: stored zip + inline strings, right-to-left sheets ═══════ */
 const CRC_T=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } return t; })();
 function crc32(b){ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c=CRC_T[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
@@ -1099,4 +1110,4 @@ if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextM
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,allocatePayment,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx};
+  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries};
