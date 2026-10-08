@@ -617,7 +617,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=53;
+const APP_VER=54;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1968,6 +1968,10 @@ const HELP={
     <p>المكسب = الدخل ناقص مصاريفها، بالطريقتين.</p>`},
   stays:{t:'دخل الحجوزات',b:()=>`<p>قيمة الليالي اللي اتسكنت الشهر ده بعد عمولة المنصة. الحجز اللي بيعدّي آخر الشهر بيتقسم على الشهرين بعدد لياليه.</p>
     <p><b>متأجرة X% من الشهر</b> = كام ليلة اتأجرت من ليالي الشهر.</p>`},
+  worthT:{t:'فلوسك على مدار الشهور',b:()=>`<p>كل عمود = كان معاك كام في آخر الشهر ده في كل حساباتك (كاش وبنك وعملات). آخر عمود = النهاردة.</p>
+    <p>العملات التانية محسوبة بسعر النهاردة. الأعمدة الباهتة = بالسالب.</p>`},
+  rentY:{t:'الشقة في السنة',b:()=>`<p>كل شهر في السنة: كام ليلة اتأجرت، و<b>متوسط سعر الليلة</b> (دخل الحجوزات ÷ الليالي بعد العمولة)، واللي وصلك فعلاً، ومصاريف الشقة، والمكسب.</p>
+    <p>آخر سطر = السنة كلها، ينفع للضرايب أو تعرف الشقة جابت كام.</p>`},
   tithe:{t:'العشور',b:()=>`<p>بتحدد نسبة (عادةً 10%) من دخلك. التطبيق بيحسبها كل شهر من الدخل اللي سجلته، ويقارنها باللي سجلته في تصنيف العشور.</p>
     <p><b>فاضل</b> = المفروض لسه ما طلّعتهوش. <b>زيادة</b> = طلّعت أكتر من النسبة. وتحت بيقولك المجموع من أول السنة.</p>`},
   people:{t:'مصاريف كل فرد',b:()=>`<p>كل مصروف تعلّمه «لمين؟» (في التفاصيل ✎، أو لما تكتب الاسم في الملاحظة زي «علاج مرثا») بيتحسب على الشخص ده.</p>
@@ -2028,7 +2032,7 @@ function renderRep(){
     <button id="rPrev" aria-label="قبله">›</button></div>`+(biz?`<div class="seg" id="repScope" style="margin:0 0 12px">
       ${[['mine','شخصي'],['biz','🏘 الإيجارات'],['all','الكل']].map(([k,l])=>`<button data-sc="${k}" aria-pressed="${sc===k}">${l}</button>`).join('')}</div>`:'');
 
-  const nav0=nav; nav=backupBanner()+nav0;
+  const nav0=nav+`<button class="ghost" id="yrBtn" style="margin:0 0 12px">📅 تقرير سنة ${mk.slice(0,4)}</button>`; nav=backupBanner()+nav0;
   if(sc==='biz'){ $('#repBody').innerHTML=nav+repBiz(mk); return bindRepNav(); }
   if(!all.length){
     $('#repBody').innerHTML=nav+goalsCard()+`<div class="empty"><div class="h">مفيش حركات في ${monthLabel(mk)}</div>
@@ -2208,6 +2212,7 @@ function repBiz(mk){
         ${refunds>0?`<br>• مبالغ رجعت لضيوف لغوا: <b>${money0(refunds)}</b>`:''}
         ${!ahead&&!unpaid&&!rentLate&&!r.fees&&!refunds?'<br>• حجوزات بتعدّي آخر الشهر بتتقسم بعدد لياليها، والفلوس بتتحسب يوم ما وصلت.':''}</div></div>
     ${unitCards(mk)}
+    ${rentalYearCard(mk.slice(0,4))}
     ${cats.length?`<div class="card"><h3>مصاريف الوحدات بالتصنيف</h3>${cats.map(([id,v])=>{const c=catOf(id);return `<div class="kv" style="padding:5px 0"><span>${c.emoji} ${esc(c.name)}</span><b>${money(v)}</b></div>`;}).join('')}</div>`:''}
     ${yearCard('biz')}`;
 }
@@ -2347,6 +2352,7 @@ async function makePdf(name){
 }
 $('#repPdf').addEventListener('click',()=>printReport(S.repMonth||today().slice(0,7)));
 function bindRepNav(){
+  if($('#yrBtn')) $('#yrBtn').onclick=()=>yearSheet(S.repMonth.slice(0,4));
   if($('#addGoal')) $('#addGoal').onclick=()=>goalSheet(null);
   $('#repBody').querySelectorAll('[data-goal]').forEach(x=>x.onclick=()=>goalSheet(x.dataset.goal));
   const p=$('#rPrev'),n=$('#rNext');
@@ -2480,6 +2486,113 @@ function peopleSheet(){
       for(const t of old){ t.who=guessWho(t.note); t.whoAuto=1; } await Store.batch(old.map(t=>['put','tx',t])); tagged=old.length; }
     closeSheet(); renderSet(); renderRep(); renderLog(); toast(tagged?`تم — واتعلّم ${tagged} مصروف قديم`:'تم');
   };
+}
+
+/* ═══════ the year, and how much money there was month by month ═══════ */
+/* what all live accounts held at the end of day `d`, in ج (other currencies at today's rate) */
+function worthAt(d){
+  const moves=moneyMoves();
+  return liveAccts().reduce((s,a)=>{ const r=rateOf(a);
+    const nat=S.tx.filter(t=>t.date<=d).reduce((b,t)=>b+txDelta(t,a.id,a.ccy,r),a.opening||0)
+      +moves.filter(f=>f.acct===a.id&&f.date<=d).reduce((b,f)=>b+f.amount/(a.ccy?r:1),0);
+    return s+nat*r; },0);
+}
+/* month-end totals from the first month the app was used, up to 12 months back */
+function worthSeries(){
+  const first=S.tx.reduce((m,t)=>t.date<m?t.date:m,today()).slice(0,7), out=[];
+  let k=today().slice(0,7);
+  for(let i=0;i<12&&k>=first;i++,k=prevMonth(k)){
+    const end=k===today().slice(0,7)?today():`${k}-${String(dim(+k.slice(0,4),+k.slice(5))).padStart(2,'0')}`;
+    out.unshift({mk:k,v:worthAt(end)});
+  }
+  return out;
+}
+/* a line for one series over months: it zooms to the range the values move in (a total that only
+   moves a little would look flat as bars from zero); a tap on a month shows its figure */
+function lineChart(series,id){
+  const W=300,H=112,px=16,py=12,PH=92, vs=series.map(x=>x.v), lo=Math.min(...vs), hi=Math.max(...vs);
+  const pad=Math.max((hi-lo)*0.15,Math.abs(hi)*0.002,1), y0=lo-pad, y1=hi+pad;
+  const X=i=>series.length===1?W/2:px+i*(W-2*px)/(series.length-1), Y=v=>py+(1-(v-y0)/(y1-y0))*(PH-2*py);
+  const pts=series.map((x,i)=>`${X(i).toFixed(1)},${Y(x.v).toFixed(1)}`).join(' ');
+  const step=series.length>1?(W-2*px)/(series.length-1):W;
+  return `<svg id="${id}" viewBox="0 0 ${W} ${H}" style="width:100%;height:124px;display:block;direction:ltr" role="img" aria-label="فلوسك آخر كل شهر">
+      <polyline points="${pts}" fill="none" stroke="var(--mint)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${series.map((x,i)=>`<circle cx="${X(i)}" cy="${Y(x.v)}" r="4.5" fill="var(--mint)" stroke="var(--ink2)" stroke-width="2" data-dot="${i}"/>`).join('')}
+      ${series.map((x,i)=>series.length<=6||i%2===(series.length-1)%2?`<text x="${X(i)}" y="${H-4}" text-anchor="middle" font-size="10" fill="var(--dim)">${AR_M3[+x.mk.slice(5)-1]}</text>`:'').join('')}
+      ${series.map((x,i)=>`<rect data-ci="${i}" x="${X(i)-step/2}" y="0" width="${step}" height="${H}" fill="transparent" style="cursor:pointer"><title>${monthLabel(x.mk)}: ${money0(x.v)}</title></rect>`).join('')}
+    </svg>
+    <div id="${id}Cap" style="text-align:center;font-size:12.5px;color:var(--dim);margin-top:8px;min-height:18px">دوس على أي شهر تشوف رقمه</div>`;
+}
+function bindColumns(id,series,fmt){
+  const box=document.getElementById(id); if(!box) return;
+  box.querySelectorAll('[data-ci]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.ci, x=series[i];
+    box.querySelectorAll('[data-dot]').forEach(c=>c.setAttribute('r',c.dataset.dot==i?'6.5':'4.5'));
+    document.getElementById(id+'Cap').innerHTML=fmt(x); });
+}
+function worthCard(){
+  const sr=worthSeries(); if(sr.length<2) return '';
+  const cur=esc(S.settings.cur), d=sr[sr.length-1].v-sr[0].v;
+  return `<div class="card" style="margin-top:14px"><h3>💰 فلوسك على مدار الشهور${qh('worthT')}</h3>
+    ${lineChart(sr,'wCols')}
+    <div class="foot">من ${monthLabel(sr[0].mk)} لحد دلوقتي فلوسك ${d>=0?'زادت':'قلّت'} <b class="${d>=0?'pos':'neg'}">${money0(Math.abs(d))}</b> ${cur}.</div></div>`;
+}
+/* the rentals across a year: month by month, with the average price of a night */
+function rentalYear(y){
+  const rows=[]; let tot={earned:0,collected:0,cost:0,profit:0,nights:0,stayEarned:0};
+  for(let m=1;m<=12;m++){ const mk=`${y}-${String(m).padStart(2,'0')}`; if(mk>today().slice(0,7)) break;
+    const r=rentalMonth(rentalData(),mk), sm=staySummary(S.stays,mk);
+    if(!r.earned&&!r.collected&&!r.cost) continue;
+    const row={mk,...r,stayEarned:sm.net-sm.kept,adr:sm.nights?(sm.net-sm.kept)/sm.nights:0};
+    rows.push(row); for(const k of Object.keys(tot)) tot[k]+=row[k]||0; }
+  tot.adr=tot.nights?tot.stayEarned/tot.nights:0;
+  return {rows,tot};
+}
+function rentalYearCard(y){
+  const {rows,tot}=rentalYear(y); if(!rows.length) return '';
+  const cur=esc(S.settings.cur), n=v=>`<span class="num">${money0(v)}</span>`;
+  return `<div class="card"><h3>🏘 الشقة في ${y}${qh('rentY')}</h3>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <tr style="color:var(--dim)"><th style="text-align:start;font-weight:500;padding:4px 0">الشهر</th><th>ليالي</th><th>متوسط الليلة</th><th>وصلك</th><th>مصاريف</th><th>المكسب</th></tr>
+      ${rows.map(r=>`<tr style="border-top:1px solid var(--ink3)"><td style="padding:6px 0">${AR_MONTHS[+r.mk.slice(5)-1]}</td><td style="text-align:center">${r.nights||'—'}</td>
+        <td style="text-align:center">${r.adr?n(r.adr):'—'}</td><td style="text-align:center">${n(r.collected)}</td><td style="text-align:center">${n(r.cost)}</td>
+        <td style="text-align:center;color:${r.profit>=0?'var(--mint)':'var(--red)'}">${n(r.profit)}</td></tr>`).join('')}
+      <tr style="border-top:1.5px solid var(--dim);font-weight:700"><td style="padding:6px 0">السنة</td><td style="text-align:center">${tot.nights}</td><td style="text-align:center">${tot.adr?n(tot.adr):'—'}</td>
+        <td style="text-align:center">${n(tot.collected)}</td><td style="text-align:center">${n(tot.cost)}</td><td style="text-align:center;color:${tot.profit>=0?'var(--mint)':'var(--red)'}">${n(tot.profit)}</td></tr>
+    </table></div>
+    <div class="foot">«وصلك» و«المكسب» = الفلوس اللي دخلت وخرجت فعلاً. «متوسط الليلة» = دخل الحجوزات ÷ عدد الليالي (بعد العمولة). المفروض يدخل في السنة على الليالي والعقود: <b>${money0(tot.earned)}</b> ${cur}.</div></div>`;
+}
+/* the whole year in one sheet */
+function yearSheet(y){
+  const cur=esc(S.settings.cur), sc=hasBiz()?(S.repScope&&S.repScope!=='biz'?S.repScope:'mine'):'all', thisY=today().slice(0,4);
+  const months=[]; for(let m=1;m<=12;m++){ const mk=`${y}-${String(m).padStart(2,'0')}`; if(mk>today().slice(0,7)) break; months.push(mk); }
+  const rows=months.map(mk=>({mk,i:incNet(mk,sc),e:expNet(mk,sc)})).filter(r=>r.i||r.e);
+  const I=rows.reduce((s,r)=>s+r.i,0), E=rows.reduce((s,r)=>s+r.e,0);
+  const by={}; for(const mk of months){ inMonth(mk,'exp',sc).forEach(t=>by[t.cat]=(by[t.cat]||0)+t.amount); inMonth(mk,'ref',sc).forEach(t=>by[t.cat]=(by[t.cat]||0)-t.amount); }
+  const top=Object.entries(by).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const n=v=>`<span class="num">${money0(v)}</span>`;
+  let tithe='';
+  if(titheOn()){ let d=0,p=0; for(const mk of months){ const r=titheMonth(mk); d+=r.due; p+=r.paid; }
+    tithe=`<div class="card" style="box-shadow:none"><h3>⛪ العشور في ${y}</h3><div class="kv"><span>المفروض</span><b>${money0(d)} ${cur}</b></div><div class="kv"><span>طلّعت</span><b>${money0(p)} ${cur}</b></div></div>`; }
+  sheet(`<h2>📅 تقرير سنة ${y}</h2>
+    <div class="mnav" style="padding-top:0"><button id="ysNext" ${y>=thisY?'disabled':''} aria-label="بعدها">‹</button><span class="lbl">${y}${hasBiz()?` · ${sc==='mine'?'شخصي':'الكل'}`:''}</span><button id="ysPrev" aria-label="قبلها">›</button></div>
+    ${rows.length?`<div class="kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin:6px 0 12px">
+      <div class="stat"><div class="v" style="color:var(--mint)">${money0(I)}</div><div class="l">دخل</div></div>
+      <div class="stat"><div class="v">${money0(E)}</div><div class="l">مصاريف</div></div>
+      <div class="stat"><div class="v" style="color:${I-E>=0?'var(--mint)':'var(--red)'}">${I-E>=0?'+':''}${money0(I-E)}</div><div class="l">${I-E>=0?'حوّشت':'صرفت زيادة'}</div></div></div>
+    <div class="card" style="box-shadow:none"><h3>شهر بشهر</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tr style="color:var(--dim)"><th style="text-align:start;font-weight:500;padding:4px 0">الشهر</th><th>دخل</th><th>مصاريف</th><th>الفرق</th></tr>
+        ${rows.map(r=>`<tr style="border-top:1px solid var(--ink3)"><td style="padding:6px 0">${AR_MONTHS[+r.mk.slice(5)-1]}</td><td style="text-align:center">${n(r.i)}</td><td style="text-align:center">${n(r.e)}</td>
+          <td style="text-align:center;color:${r.i-r.e>=0?'var(--mint)':'var(--red)'}">${r.i-r.e>=0?'+':''}${n(r.i-r.e)}</td></tr>`).join('')}
+      </table>
+      <div class="foot">متوسط مصاريفك في الشهر: <b>${money0(E/rows.length)}</b> ${cur}</div></div>
+    ${top.length?`<div class="card" style="box-shadow:none"><h3>أكتر البنود في السنة</h3>${top.map(([id,v])=>{const c=catOf(id);return `<div class="kv" style="padding:5px 0"><span>${c.emoji} ${esc(c.name)}</span><b>${money0(v)} <small style="color:var(--dim);font-weight:500">${Math.round(v/E*100)}%</small></b></div>`;}).join('')}</div>`:''}
+    ${tithe}
+    ${hasBiz()?rentalYearCard(y):''}`
+    :`<div class="empty" style="padding:24px"><div class="p">مفيش حركات متسجلة في ${y}.</div></div>`}
+    <div class="acts"><button class="go" onclick="closeSheet()">تمام</button></div>`);
+  if($('#ysPrev')) $('#ysPrev').onclick=()=>yearSheet(String(+y-1));
+  if($('#ysNext')) $('#ysNext').onclick=()=>yearSheet(String(+y+1));
 }
 
 /* ═══════ spending habits: the usual month and a limit per category ═══════ */
@@ -2721,6 +2834,7 @@ function walAcc(){
     ${lb.length?`<div class="list" style="margin-top:14px">${lb.map(row).join('<div class="perf"></div>')}</div>`:''}
     ${lf.length?`${lb.length?'<div class="sec"><h2>فلوس بعملات تانية</h2></div>':'<div style="height:14px"></div>'}<div class="list">${lf.map(row).join('<div class="perf"></div>')}</div>
       <div style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.7">القيمة بالجنيه بتتحسب بالسعر اللي في الإعدادات ← العملات. «زادت / قلّت» = الفرق بين قيمتها دلوقتي واللي دفعته فيها.</div>`:''}
+    ${f==='all'?worthCard():''}
     ${!list.length?`<div class="empty" style="padding:24px 10px"><div class="p">مفيش حسابات هنا.</div></div>`
       :`<div style="font-size:12px;color:var(--dim);margin-top:8px;text-align:center">دوس على أي حساب تشوف صرفت منه كام وحركاته</div>`}
     ${tail}`;
@@ -3091,7 +3205,7 @@ function walRent(){
       <span class="lbl">${monthLabel(mk)}</span><button id="sPrev" aria-label="قبله">›</button></div>
     <div class="hero"><div class="cap">دخل الحجوزات الشهر ده${qh('stays')}</div>
       <div class="big">${money(sm.net)}<span class="cur">${cur}</span></div>
-      <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>متأجرة <b>${occ}%</b> من الشهر</span><span>حجوزات <b>${sm.count}</b></span></div>
+      <div class="legs"><span>ليالي <b>${sm.nights}</b></span><span>متأجرة <b>${occ}%</b> من الشهر</span><span>حجوزات <b>${sm.count}</b></span>${sm.nights?`<span>متوسط الليلة <b>${money0((sm.net-sm.kept)/sm.nights)}</b></span>`:''}</div>
       <div class="cmp">وصلك فعلاً الشهر ده <span class="num">${money0(rm.collected)}</span> ${cur}${sm.fees>0?` · عمولات <span class="num">${money0(sm.fees)}</span>`:''}${sm.kept>0?` · من إلغاءات <span class="num">${money0(sm.kept)}</span>`:''}</div></div>
     ${sm.pending>0?`<div class="banner" style="margin-top:12px">فاضلك تحصّل <b class="num">${money0(sm.pending)} ${cur}</b> من ${sm.pendingN===1?'حجز':sm.pendingN+' حجوزات'} — دوس على الحجز وسجّل الدفعة لما توصل.</div>`:''}
     ${feeOwed>0?`<div class="banner" style="margin-top:12px">عليك عمولات للمنصات <b class="num">${money0(feeOwed)} ${cur}</b> عن حجوزات الضيف دفع فيها في الشقة — لما تدفعها علّمها في الحجز.</div>`:''}
@@ -3152,6 +3266,7 @@ function bindWal(){
   if(g('addAcc')) g('addAcc').onclick=()=>acctSheet(null);
   if(g('addFx')) g('addFx').onclick=()=>acctSheet(null,{fx:true});
   /* wallet filter: a group replaces the pick; an account chip adds or removes itself; an account row shows just it */
+  if(b.querySelector('#wCols')){ const sr=worthSeries(); bindColumns('wCols',sr,x=>`${monthLabel(x.mk)}: <b class="num" style="color:var(--chalk)">${money0(x.v)}</b> ${esc(S.settings.cur)}`); }
   const pickWal=async f=>{ S.settings.walFilter=f; S.accMonth=null; renderWal(); $('#v-wal').scrollTop=0; await saveSettings();
     const sel=b.querySelector('#walF [aria-pressed="true"]'); if(sel) sel.scrollIntoView({block:'nearest',inline:'center'}); };
   b.querySelectorAll('[data-wf]').forEach(x=>x.onclick=()=>pickWal(x.dataset.wf));
