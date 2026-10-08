@@ -539,3 +539,11 @@ test('notes: invisible direction marks are dropped', () => {
   assert.equal(L.norm('‏كشري'), L.norm('كشري'));
   assert.equal(L.cleanText(null), '');
 });
+
+test('paying a shop for several things settles the oldest first', () => {
+  const items = [{ id: 'b', left: 68, date: '2026-10-03' }, { id: 'a', left: 35, date: '2026-10-08' }, { id: 'c', left: 20, date: '2026-10-01' }];
+  assert.deepEqual(L.allocatePayment(items, 123), [{ id: 'c', amount: 20 }, { id: 'b', amount: 68 }, { id: 'a', amount: 35 }]);
+  assert.deepEqual(L.allocatePayment(items, 50), [{ id: 'c', amount: 20 }, { id: 'b', amount: 30 }]);
+  assert.deepEqual(L.allocatePayment(items, 500).reduce((s, x) => s + x.amount, 0), 123);   // never more than owed
+  assert.deepEqual(L.allocatePayment(items, 0), []);
+});
