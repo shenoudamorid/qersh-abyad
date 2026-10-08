@@ -1003,7 +1003,7 @@ function spendingPlan(months,cats,cur,cut=0.1){
 function checkBackup(d){
   if(!d||typeof d!=='object') return 'not an object';
   if(!Array.isArray(d.tx)||!Array.isArray(d.cats)) return 'missing tx or cats';
-  for(const k of ['acct','recur','debt','recon','plan','rent','stay','goal'])
+  for(const k of ['acct','recur','debt','recon','plan','rent','stay','goal','photo'])
     if(d[k]!=null && !Array.isArray(d[k])) return `${k} is not a list`;
   const ids=x=>x&&typeof x==='object'&&(typeof x.id==='string'||typeof x.id==='number');
   for(const k of ['tx','cats','acct','recur','debt','recon','plan','rent','stay','goal'])
