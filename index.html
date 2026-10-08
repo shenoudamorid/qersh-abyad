@@ -624,7 +624,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=57;
+const APP_VER=58;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -2549,7 +2549,7 @@ function pinMoves(){
   return S.tx.filter(t=>(t.kind==='exp'||t.kind==='ref')&&!t.stay&&!t.auto).map(t=>({t,to:pinCat(t.note,pins)})).filter(x=>x.to&&x.to!==x.t.cat);
 }
 function pinMoveSheet(moves,after){
-  sheet(`<h2>🧸 حاجات ${esc(catOf(moves[0].to).name)} في تصنيفات تانية</h2>
+  sheet(`<h2>${catOf(moves[0].to).emoji} حاجات ${esc(catOf(moves[0].to).name)} في تصنيفات تانية</h2>
     <p class="lede">دول مصاريف قديمة شكلها تبع ${esc(catOf(moves[0].to).name)}. علّم اللي عايز تنقله.</p>
     <div class="list">${moves.map((m,i)=>`<label class="item" style="gap:10px"><input type="checkbox" data-pm="${i}" checked style="width:20px;height:20px;flex:none">
       <span class="nm">${esc(m.t.note||catOf(m.t.cat).name)}<small>${dayLabel(m.t.date)} · من ${catOf(m.t.cat).emoji} ${esc(catOf(m.t.cat).name)} ← ${catOf(m.to).emoji} ${esc(catOf(m.to).name)}</small></span>
@@ -4254,14 +4254,28 @@ function catSheet(id,kind){
     <div class="acts">
       ${id&&catsOf(k).length>1?'<button class="del" id="cD">حذف</button>':'<button class="no" onclick="closeSheet()">إلغاء</button>'}
       <button class="go" id="cOk">حفظ</button></div>`);
+  /* a known name («الموتوسيكل») fills in its emoji and words while the words box is still empty */
+  $('#cN').oninput=()=>{ const pr=catPreset($('#cN').value);
+    if(pr&&!$('#cW').value.trim()){ $('#cW').value=pr.words.join('، '); if(['💠',''].includes($('#cE').value.trim())) $('#cE').value=pr.emoji; } };
   $('#cOk').onclick=async()=>{
     const n=$('#cN').value.trim(); if(!n){$('#cN').focus();return;}
+    const was=new Set((c.words||[]).map(w=>norm(w)));
     const v={emoji:$('#cE').value.trim()||'💠',name:n,
       budget:$('#cB')?Number($('#cB').value)||0:0, fixed:$('#cF')?$('#cF').checked:false,
       words:[...new Set($('#cW').value.split(/[,،\n]+/).map(w=>w.trim()).filter(Boolean))]};
-    if(id){ Object.assign(c,v); await Store.put('cats',c); }
-    else{ const nc={id:uid(),...v,kind:k,order:S.cats.length}; S.cats.push(nc); await Store.put('cats',nc); }
+    let me;
+    if(id){ Object.assign(c,v); await Store.put('cats',c); me=c; }
+    else{ me={id:uid(),...v,kind:k,order:S.cats.length}; S.cats.push(me); await Store.put('cats',me); }
+    /* a word belongs to one category: the ones just added here leave the others */
+    const added=v.words.filter(w=>!was.has(norm(w))), pr=catPreset(n);
+    if(added.length) for(const o of catsOf(k)){ if(o.id===me.id) continue;
+      const kept=stealWords(o.words,added,pr?pr.names:[]); if(kept.length!==(o.words||[]).length){ o.words=kept; await Store.put('cats',o); } }
     closeSheet(); renderCats(); renderSet(); renderReadout(); toast('تم');
+    /* old entries the words now point here — offered, never moved silently */
+    if(added.length){ const pins=catPins();
+      const mv=S.tx.filter(t=>t.kind!=='trf'&&catOf(t.cat).kind===k&&t.cat!==me.id&&!t.stay&&!t.auto&&t.note)
+        .filter(t=>{ const g=guessCat(t.note,catsOf(k),pins); return g&&g.id===me.id; }).map(t=>({t,to:me.id}));
+      if(mv.length) setTimeout(()=>{ if(!$('#sheet').classList.contains('on')) pinMoveSheet(mv); },450); }
   };
   const d=$('#cD');
   if(d) d.onclick=async()=>{

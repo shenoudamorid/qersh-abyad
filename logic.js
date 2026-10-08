@@ -961,6 +961,30 @@ function scoreItems(keys,used,items,nameOf,wordsOf){
   return {best,score:bs,hit:bh};
 }
 
+/* ready-made categories: name one «الموتوسيكل» and it comes with its words, and takes them from the others
+   (بنزين، تغيير زيت… leave مواصلات, which keeps اوبر، تاكسي، ميكروباص) */
+const MOTO_N=['موتوسيكل','موتسكل','موتوسكل','موتسيكل','موتو سيكل'];
+const CAT_PRESETS=[{names:MOTO_N,emoji:'🏍',words:[...MOTO_N,'بنزين','بنزينة','بنزينه','تفويل','فول تانك','محطة بنزين','سولار',
+  'تغيير زيت','زيت موتور','زيت فتيس','فلتر زيت','فلتر هوا','كاوتش','كاوتشات','كفر','كفرات','ترصيص','فرامل','تيل','تيل فرامل',
+  'بوجيه','بوجيهات','جنزير','كلتش','دبرياج','كاربراتير','ميكانيكي','مكانيكي','ميكانيكا','قطع غيار','قطعة غيار','اسبير','اسبيرات',
+  'كارتة','جراج','ركنة','سايس','باركينج','خوذة','كاسك','رخصة موتوسيكل','ترخيص موتوسيكل','مخالفة مرور','مخالفات المرور']}];
+function catPreset(name){
+  const ts=tokOf(String(name||'')).map(stripAl);
+  return CAT_PRESETS.find(p=>p.names.some(n=>{ const nt=tokOf(n).map(stripAl); return nt.every(x=>ts.includes(x)); }))||null;
+}
+/* another category's keywords minus what now belongs to `words`. The same word always goes; a phrase built on
+   one of its single words or on the name («بنزين الموتوسيكل»، «كاوتش جديد») goes only from the category that
+   was really holding them (3+ of the same words) — so «ولاعة بنزين» stays in ترفيه — and never one about the car */
+function stealWords(other,words,names){
+  const own=new Set(words.map(w=>norm(w))), single=new Set([...words,...(names||[])].filter(w=>tokOf(w).length===1).map(stripAl));
+  const exact=(other||[]).filter(w=>own.has(norm(w))).length, car=new Set(['عربيه','سياره'].map(stripAl));
+  return (other||[]).filter(w=>{
+    if(own.has(norm(w))) return false;
+    if(exact<3) return true;
+    const ts=tokOf(w).map(stripAl);
+    return !ts.some(t=>single.has(t)) || ts.some(t=>car.has(t));
+  });
+}
 /* words that always mean «for the kids» — they beat any other keyword («شامبو اطفال» isn't بيت ومعيشة) */
 const KID_W=['اطفال','طفل','طفلة','بيبي','رضيع','رضع','نونو','بامبرز','حفاض','حفاضة','حفاضات','بيبي جوي','مولفكس',
   'سيريلاك','ببرونة','ببرونات','بزازة','سكاتة','حضانة','تطعيم','تطعيمات','لعب اطفال','العاب اطفال','لبس اطفال','هدوم اطفال'];
@@ -1131,4 +1155,4 @@ if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextM
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,allocatePayment,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries,pinCat,KID_W};
+  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries,pinCat,KID_W,catPreset,stealWords};
