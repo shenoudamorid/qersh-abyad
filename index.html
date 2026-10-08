@@ -617,12 +617,12 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=51;
+const APP_VER=52;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
-  const NAME='masareef', VER=5,
-        STORES=['tx','cats','recur','meta','debt','recon','acct','plan','rent','stay','goal'];
+  const NAME='masareef', VER=6,
+        STORES=['tx','cats','recur','meta','debt','recon','acct','plan','rent','stay','goal','photo'];
   let db=null, mem=null;
   function memInit(){ mem={}; STORES.forEach(s=>mem[s]=new Map()); }
   function open(){
@@ -675,12 +675,14 @@ const Store = (() => {
   const put=(s,v)=>db?new Promise((res,rej)=>{const r=t(s,'readwrite').put(v);r.onsuccess=()=>res(v);r.onerror=()=>rej(r.error);}):(mem[s].set(v.id,v),Promise.resolve(v));
   const del=(s,id)=>db?new Promise((res,rej)=>{const r=t(s,'readwrite').delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);}):(mem[s].delete(id),Promise.resolve());
   const clear=s=>db?new Promise((res,rej)=>{const r=t(s,'readwrite').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error);}):(mem[s].clear(),Promise.resolve());
-  return {open,persist,batch,all,put,del,clear,get persistent(){return !!db}};
+  const get=(s,id)=>db?new Promise((res,rej)=>{const r=t(s,'readonly').get(id);r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error);}):Promise.resolve(mem[s].get(id)||null);
+  const keys=s=>db?new Promise((res,rej)=>{const r=t(s,'readonly').getAllKeys();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);}):Promise.resolve([...mem[s].keys()]);
+  return {open,persist,batch,all,put,del,clear,get,keys,get persistent(){return !!db}};
 })();
 
 /* ═══════ state ═══════ */
 const S = {
-  tx:[], cats:[], accts:[], recur:[], debts:[], recons:[], plans:[], rents:[], stays:[], goals:[], stayMonth:null,
+  tx:[], cats:[], accts:[], photoIds:new Set(), recur:[], debts:[], recons:[], plans:[], rents:[], stays:[], goals:[], stayMonth:null,
   settings:{cur:'ج', monthBudget:0, currencies:[], lastBackup:0, mode:'simple', theme:'dark', units:[]},
   draft:{kind:'exp',amt:'',cat:null,acct:null,toAcct:null,note:'',date:null,ccy:null,unit:''},
   lastCat:{exp:null,inc:null,ref:null},
@@ -866,6 +868,7 @@ function applyMode(){
   }
   S.recons=(await Store.all('recon')).sort((a,b)=>a.date.localeCompare(b.date));
   S.tx=await Store.all('tx');
+  S.photoIds=new Set(await Store.keys('photo').catch(()=>[]));
 
   /* ── migrations ── */
   for(const c of S.cats){
@@ -931,6 +934,7 @@ function applyMode(){
   S.repMonth=today().slice(0,7);
 
   await runRecurring();
+  await autoSnapshot();
   lastDay=today();
   buildKeys(); applyMode(); renderAccts(); renderCats(); renderQuick(); renderRail(); renderReadout();
 
@@ -1093,12 +1097,66 @@ function welcome(){
 let persisted=null;
 
 /* backup reminder: a week without one, or 100+ entries logged since the last */
+/* ═══════ receipt photos: one per entry, shrunk to a phone-friendly JPEG, stored by the entry's id ═══════ */
+function shrinkPhoto(file){
+  return new Promise((ok,bad)=>{
+    const u=URL.createObjectURL(file), img=new Image();
+    img.onload=()=>{ const m=1280, k=Math.min(1,m/Math.max(img.width,img.height));
+      const c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u); ok(c.toDataURL('image/jpeg',0.72)); };
+    img.onerror=()=>{ URL.revokeObjectURL(u); bad(new Error('img')); };
+    img.src=u;
+  });
+}
+async function savePhoto(id,data){ await Store.put('photo',{id,data,at:Date.now()}); S.photoIds.add(id); }
+async function dropPhoto(id){ if(!S.photoIds.has(id)) return null; const p=await Store.get('photo',id); await Store.del('photo',id); S.photoIds.delete(id); return p; }
+/* the picker: a button that opens the camera or the photo library */
+const photoPicker=(id,label)=>`<label class="ghost" style="display:block;text-align:center;margin:0;cursor:pointer">${label}
+  <input type="file" id="${id}" accept="image/*" style="display:none"></label>`;
+function viewPhoto(data){
+  sheet(`<h2>صورة الإيصال</h2><img src="${data}" alt="" style="width:100%;border-radius:14px;display:block">
+    <div class="acts"><button class="go" onclick="closeSheet()">تمام</button></div>`);
+}
+
+/* ═══════ safety copies inside the app: one a day, the day before kept too. They help when something
+   was deleted or messed up by mistake — not when the app itself is removed (that needs a file backup) ═══════ */
+async function autoSnapshot(){
+  if(!S.tx.length || Date.now()-(S.settings.autoSnapAt||0)<20*3600e3) return;
+  try{
+    const cur=(await Store.all('meta')).find(m=>m.id==='autoBackup');
+    const ops=[['put','meta',{id:'autoBackup',at:Date.now(),v:backupJson()}]];
+    if(cur) ops.push(['put','meta',{...cur,id:'autoBackupPrev'}]);
+    await Store.batch(ops);
+    S.settings.autoSnapAt=Date.now(); await saveSettings();
+  }catch(e){}
+}
+async function snapshotsSheet(){
+  const metas=(await Store.all('meta')).filter(m=>['autoBackup','autoBackupPrev','preRestore'].includes(m.id)&&m.v).sort((a,b)=>b.at-a.at);
+  const info=m=>{ try{ const d=JSON.parse(m.v); return `${d.tx.length} حركة${d.stay&&d.stay.length?` · ${d.stay.length} حجز`:''}`; }catch(e){ return ''; } };
+  const when=m=>{ const d=new Date(m.at); return `${dayLabel(iso(d))} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+  sheet(`<h2>نسخ التطبيق التلقائية</h2>
+    <p class="lede">التطبيق بياخد نسخة من بياناتك جوّاه مرة كل يوم. لو مسحت حاجة بالغلط أو البيانات اتلخبطت، ترجع لواحدة منهم.
+      <b>دي مش بديل عن النسخة الاحتياطية في الملفات</b> — لو التطبيق اتمسح من الموبايل بتروح معاه.</p>
+    ${metas.length?`<div class="list">${metas.map((m,i)=>`<button class="item" data-snap="${i}"><em>↺</em>
+      <span class="nm">${m.id==='preRestore'?'قبل آخر استرجاع':m.id==='autoBackup'?'آخر نسخة تلقائية':'النسخة اللي قبلها'}<small>${when(m)} · ${info(m)}</small></span><span class="chev">‹</span></button>`).join('<div class="perf"></div>')}</div>`
+      :'<div class="empty" style="padding:20px"><div class="p">لسه مفيش نسخ — أول نسخة هتتاخد بكرة.</div></div>'}
+    <div class="acts"><button class="no" onclick="closeSheet()">رجوع</button></div>`);
+  $('#sheet').querySelectorAll('[data-snap]').forEach(x=>x.onclick=()=>restoreFrom(metas[+x.dataset.snap].v));
+}
+/* a strip that stays until a backup file is taken */
+function backupBanner(){
+  const nag=backupNag(); if(!nag) return '';
+  return `<div class="banner" style="margin:12px 0 0;border-color:color-mix(in srgb,var(--red) 45%,transparent);background:color-mix(in srgb,var(--red) 10%,transparent)">
+    ⚠ <b>${nag}</b>. بياناتك على الموبايل ده بس — لو اتمسح التطبيق بتروح.
+    <button class="ghost bkNow" style="margin-top:9px;border-style:solid;color:var(--brand);border-color:var(--brand)">خُد نسخة دلوقتي ← «حفظ في الملفات» ← iCloud Drive</button></div>`;
+}
+document.addEventListener('click',e=>{ if(e.target.closest('.bkNow')) exportJson(); });
 function backupNag(){
   if(S.tx.length<=15) return '';
   const last=S.settings.lastBackup||0;
   if(Date.now()-last>7*864e5) return last?'عدّى أسبوع من غير نسخة احتياطية':'لسه ما خدتش نسخة احتياطية';
   const n=S.tx.filter(t=>(t.at||0)>last).length;
-  return n>=100?`سجّلت ${n} حركة من آخر نسخة احتياطية`:'';
+  return n>=50?`سجّلت ${n} حركة من آخر نسخة احتياطية`:'';
 }
 
 async function runRecurring(){
@@ -1251,8 +1309,9 @@ function renderReadout(){
   $('#tag').innerHTML=tag;
   const ok = Number(a)>0 && (k!=='trf' || (S.draft.toAcct && S.draft.toAcct!==S.draft.acct));
   $('#save').disabled=!ok;
-  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit||!!S.draft.credit);
+  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit||!!S.draft.credit||!!S.draft.photo);
   if(S.draft.unit && k!=='trf' && k!=='inc') $('#tag').innerHTML+=` · 🏘 ${esc(unitName(S.draft.unit))}`;
+  if(S.draft.photo && k!=='trf') $('#tag').innerHTML+=' · 📷';
   if(S.draft.credit && k==='exp') $('#tag').innerHTML+=` · 🧾 آجل${S.draft.credit.vendor?' — '+esc(S.draft.credit.vendor):''}`;
   if(S.draft.fee && k==='trf') $('#tag').innerHTML+=` · رسوم ${money(S.draft.fee)}`;
   $('#catLbl').hidden = S.draft.kind==='trf' || !PRO();
@@ -1436,11 +1495,17 @@ $('#noteBtn').addEventListener('click',()=>{
     <div class="f"><label>التاريخ</label><input id="fDate" type="date" value="${S.draft.date}"></div>
     ${unitField(S.draft.unit,S.draft.kind)}
     ${creditFields(S.draft.kind==='exp'&&PRO()?(S.draft.credit||null):undefined)}
+    ${S.draft.kind!=='trf'?`<div class="f"><label>صورة الإيصال (لو حابب)</label><div id="fPhW">${S.draft.photo?`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px">`:''}
+      ${photoPicker('fPh',S.draft.photo?'📷 غيّر الصورة':'📷 صوّر الإيصال أو اختار صورة')}</div></div>`:''}
     ${S.draft.kind==='trf'?`<div class="f"><label>رسوم التحويل (إنستاباي / فودافون كاش / البنك)</label>
       <input id="fFee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${S.draft.fee||''}"></div>`:''}
     ${ccOpts}
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="fOk">تم</button></div>`);
+  if($('#fPh')) $('#fPh').onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
+    try{ S.draft.photo=await shrinkPhoto(f);
+      $('#fPhW').innerHTML=`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px"><div style="text-align:center;font-size:12.5px;color:var(--mint)">✓ الصورة هتتحفظ مع المصروف</div>`;
+    }catch(_){ toast('مقدرتش أفتح الصورة دي'); } };
   $('#fOk').onclick=()=>{
     S.draft.note=cleanText($('#fNote').value);
     /* no chip tapped yet → let the note pick the category («شاورما» → أكل وشرب) */
@@ -1544,8 +1609,10 @@ $('#save').addEventListener('click',async()=>{
     const f={id:uid(),at:Date.now()-1,kind:'exp',amount:S.draft.fee,cat:fc.id,acct:t.acct,note:'رسوم تحويل',date:t.date};
     await Store.put('tx',f); S.tx.push(f);
   }
-  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null;
-  await commit(t);
+  const ph=k!=='trf'?S.draft.photo:null;
+  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null;
+  const rec=await commit(t);
+  if(ph&&rec){ await savePhoto(rec.id,ph); renderLog(); }
 });
 
 /* ═══════ nav ═══════ */
@@ -1627,7 +1694,7 @@ function renderLog(){
       const isTrf=t.kind==='trf';
       const icon=isTrf?'⇄':catOf(t.cat).emoji;
       const name=isTrf?`${acctOf(t.acct).name} ← ${acctOf(t.toAcct).name}`:catOf(t.cat).name;
-      const bits=[t.note, t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
+      const bits=[t.note, S.photoIds.has(t.id)?'📎':'', t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
         t.credit?`🧾 آجل${t.credit.vendor?' — '+t.credit.vendor:''}${creditLeft(t)>0?` · فاضل ${money0(creditLeft(t))}`:' · اتدفع'}`:'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
@@ -1739,6 +1806,8 @@ function editTx(id){
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
     <div id="eUnitW">${unitField(t.unitId||'',t.kind,'eUnit')}</div>
     <div id="eCrW">${creditFields(t.kind==='exp'&&(PRO()||t.credit)?(t.credit||null):undefined,creditPaid(t)>0)}</div>
+    ${!isTrf?`<div class="f"><label>صورة الإيصال</label><div id="ePh">${S.photoIds.has(t.id)?'<div style="font-size:12.5px;color:var(--dim)">بتحمّل…</div>':''}</div>
+      <div id="ePhB">${photoPicker('ePhIn',S.photoIds.has(t.id)?'📷 غيّر الصورة':'📷 ضيف صورة الإيصال')}</div></div>`:''}
     ${t.credit?`<button type="button" class="ghost" id="eCrPay" style="margin-top:0">🧾 ${creditLeft(t)>0?`فاضل ${money0(creditLeft(t))} — سجّل دفعة`:'اتدفع بالكامل — شوف الدفعات'}</button>`:''}
     <div class="acts"><button class="del" id="eDel">حذف</button>
       <button class="go" id="eOk">حفظ التعديل</button></div>`);
@@ -1751,6 +1820,16 @@ function editTx(id){
     if(!creditPaid(t)) $('#eCrW').innerHTML=creditFields(k==='exp'&&PRO()?($('#cOn')?readCredit():(t.credit||null)):undefined);
   };
   if($('#eCrPay')) $('#eCrPay').onclick=()=>creditSheet(t.id);
+  /* the receipt: shown small, tap to see it big; replaced or removed right away */
+  const showPh=async()=>{ const box=$('#ePh'); if(!box) return;
+    const p=S.photoIds.has(t.id)?await Store.get('photo',t.id):null;
+    box.innerHTML=p?`<img src="${p.data}" alt="" id="ePhImg" style="max-height:140px;border-radius:10px;display:block;margin:0 auto 8px;cursor:zoom-in">
+      <button type="button" id="ePhDel" style="display:block;margin:0 auto 8px;color:var(--red);font-size:12.5px">امسح الصورة</button>`:'';
+    if(p){ $('#ePhImg').onclick=()=>viewPhoto(p.data);
+      $('#ePhDel').onclick=async()=>{ await dropPhoto(t.id); showPh(); renderLog(); toast('اتمسحت الصورة'); }; } };
+  if($('#ePhIn')) $('#ePhIn').onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
+    try{ await savePhoto(t.id,await shrinkPhoto(f)); showPh(); renderLog(); toast('اتحفظت الصورة'); }catch(_){ toast('مقدرتش أفتح الصورة دي'); } };
+  showPh();
   $('#eOk').onclick=async()=>{
     const a=Number($('#eAmt').value); if(!(a>0)){ $('#eAmt').focus(); return; }
     const k=$('#eKind').value;
@@ -1784,8 +1863,9 @@ function editTx(id){
   };
   $('#eDel').onclick=async()=>{
     await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id);
+    const ph=await dropPhoto(t.id);
     closeSheet(); renderLog(); renderRail(); renderAccts(); renderQuick();
-    toast('اتحذف',async()=>{ await Store.put('tx',t); S.tx.push(t); sortTx();
+    toast('اتحذف',async()=>{ await Store.put('tx',t); S.tx.push(t); sortTx(); if(ph) await savePhoto(t.id,ph.data);
       renderLog(); renderRail(); renderAccts(); renderQuick(); toast('رجعت'); });
   };
 }
@@ -1924,12 +2004,13 @@ function renderRep(){
   const isThis=mk===thisM, now=new Date();
   const dLeft=isThis?D-now.getDate()+1:0, dPast=daysElapsed(mk,now);
 
-  const nav=`<div class="mnav">
+  let nav=`<div class="mnav">
     <button id="rNext" ${mk>=thisM?'disabled':''} aria-label="بعده">‹</button>
     <span class="lbl">${monthLabel(mk)}</span>
     <button id="rPrev" aria-label="قبله">›</button></div>`+(biz?`<div class="seg" id="repScope" style="margin:0 0 12px">
       ${[['mine','شخصي'],['biz','🏘 الإيجارات'],['all','الكل']].map(([k,l])=>`<button data-sc="${k}" aria-pressed="${sc===k}">${l}</button>`).join('')}</div>`:'');
 
+  const nav0=nav; nav=backupBanner()+nav0;
   if(sc==='biz'){ $('#repBody').innerHTML=nav+repBiz(mk); return bindRepNav(); }
   if(!all.length){
     $('#repBody').innerHTML=nav+goalsCard()+`<div class="empty"><div class="h">مفيش حركات في ${monthLabel(mk)}</div>
@@ -2463,7 +2544,7 @@ function renderWal(){
   const cur=esc(S.settings.cur);
   $('#walSub').innerHTML=`إجمالي <span class="num">${money0(netWorth())}</span> ${cur}`;
   const B={acc:walAcc,due:walDue,debt:walDebt,rent:walRent}[S.walTab];
-  $('#walBody').innerHTML=B();
+  $('#walBody').innerHTML=backupBanner()+B();
   bindWal(); renderDue();
 }
 /* the accounts tab: everything, or just the cash, the bank, the other currencies, or one account */
@@ -3681,6 +3762,8 @@ function renderSet(){
         <div class="perf"></div>
         <button class="item" id="impJson"><em>⤒</em><span class="nm">استرجاع من نسخة احتياطية<small>من ملف، أو بلصق البيانات المنسوخة</small></span><span class="chev">‹</span></button>
         <div class="perf"></div>
+        <button class="item" id="snapBtn"><em>↺</em><span class="nm">نسخ التطبيق التلقائية<small>بيتاخد نسخة جوه التطبيق كل يوم — ترجعلها لو حاجة اتمسحت بالغلط</small></span><span class="chev">‹</span></button>
+        <div class="perf"></div>
         <button class="item" id="cpJson"><em>⧉</em><span class="nm">نسخ كل البيانات<small>لنقلها لتطبيق تاني من غير ملفات — انسخ هنا والصق هناك</small></span><span class="chev">‹</span></button>
         <div class="perf"></div>
         <button class="item danger" id="wipe"><em>⌫</em><span class="nm">حذف كل الحركات</span><span class="chev">‹</span></button>
@@ -3723,6 +3806,7 @@ function renderSet(){
   if($('#addCcy')) $('#addCcy').onclick=()=>ccySheet(-1);
   $('#expCsv').onclick=exportCsv;
   $('#expJson').onclick=exportJson;
+  $('#snapBtn').onclick=snapshotsSheet;
   $('#impJson').onclick=importJson;
   $('#cpJson').onclick=copyAll;
   $('#wipe').onclick=wipe;
@@ -3892,10 +3976,12 @@ function exportCsv(){
   download(`qersh-abyad-${today()}.csv`,csv,'text/csv;charset=utf-8');
   toast('اتصدر ملف CSV');
 }
-const backupJson=()=>JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
-  tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents,stay:S.stays,goal:S.goals});
+const backupJson=photos=>JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
+  tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents,stay:S.stays,goal:S.goals,...(photos?{photo:photos}:{})});
 async function exportJson(){
-  const name=`qersh-abyad-backup-${today()}.json`, text=backupJson();
+  /* the file carries the receipt photos too (copy-and-paste leaves them out, it'd be too long) */
+  const photos=await Store.all('photo').catch(()=>[]);
+  const name=`qersh-abyad-backup-${today()}.json`, text=backupJson(photos);
   /* on phones the share sheet saves straight to Files / Drive / WhatsApp */
   let file=null;
   try{ file=new File([text],name,{type:'application/json'}); }catch(e){}
@@ -3966,6 +4052,8 @@ async function restoreFrom(text){
 
     /* one transaction: either the whole backup lands or the current data stays untouched */
     const lists={tx:d.tx,cats:d.cats,recur:d.recur||[],debt:d.debt||[],recon:d.recon||[],acct:accts,plan:d.plan||[],rent:d.rent||[],stay:d.stay||[],goal:d.goal||[]};
+    /* photos only come in a file backup — a pasted one keeps the photos already on this phone */
+    if(Array.isArray(raw.photo)) lists.photo=raw.photo.filter(x=>x&&x.id&&typeof x.data==='string');
     const ops=Object.keys(lists).map(k=>['clear',k]);
     for(const k in lists) for(const x of lists[k]) ops.push(['put',k,x]);
     ops.push(['put','meta',{id:'settings',v:settings}]);
@@ -3981,6 +4069,7 @@ async function restoreFrom(text){
       delete st.paidOn; delete st.tx; await Store.put('stay',st);
     }
     S.recons=lists.recon.slice().sort((a,b)=>a.date.localeCompare(b.date));
+    S.photoIds=new Set(await Store.keys('photo').catch(()=>[]));
     if(!Array.isArray(S.settings.units)) S.settings.units=[];
     await migrateRental();
     S.lastCat.exp=catsOf('exp')[0]&&catsOf('exp')[0].id;
@@ -4002,9 +4091,9 @@ async function wipe(){
   const gone=p=>{ const q={...p,pre:true}; delete q.tx; return q; };
   for(const st of S.stays){ st.pays=(st.pays||[]).map(gone); if(st.refunds) st.refunds=st.refunds.map(gone); if(st.feePay) st.feePay=gone(st.feePay); }
   for(const r of S.rents) delete r.txs;
-  await Store.batch([['clear','tx'],['clear','recon'],...recur.map(r=>['put','recur',r]),
+  await Store.batch([['clear','tx'],['clear','recon'],['clear','photo'],...recur.map(r=>['put','recur',r]),
     ...S.stays.map(st=>['put','stay',st]),...S.rents.map(r=>['put','rent',r])]);
-  S.tx=[]; S.recons=[]; S.recur=recur;
+  S.tx=[]; S.recons=[]; S.recur=recur; S.photoIds=new Set();
   renderSet(); renderRail(); renderQuick(); renderAccts(); toast('اتمسحت كل الحركات');
 }
 
