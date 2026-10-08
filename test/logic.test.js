@@ -547,3 +547,17 @@ test('paying a shop for several things settles the oldest first', () => {
   assert.deepEqual(L.allocatePayment(items, 500).reduce((s, x) => s + x.amount, 0), 123);   // never more than owed
   assert.deepEqual(L.allocatePayment(items, 0), []);
 });
+
+test('buildXlsx writes a valid zip with right-to-left sheets', () => {
+  assert.equal(L.crc32(new TextEncoder().encode('123456789')), 0xCBF43926);
+  const z = L.buildXlsx([{ name: 'الحركات', rows: [['التاريخ', 'المبلغ'], ['2026-10-01', -1500.5], ['a&<b>', ''], [{ v: 'المجموع', b: 1 }, { v: -1500.5, b: 1 }]] }, { name: 'a/b', rows: [['x']] }]);
+  const u32 = o => z[o] | z[o + 1] << 8 | z[o + 2] << 16 | (z[o + 3] << 24 >>> 0);
+  assert.equal(u32(0), 0x04034b50);                         // local header first
+  const e = z.length - 22; assert.equal(u32(e), 0x06054b50); // end record last
+  assert.equal(z[e + 10], 7);                               // 5 parts + 2 sheets
+  const text = new TextDecoder().decode(z);
+  assert.ok(text.includes('rightToLeft="1"'));
+  assert.ok(text.includes('<v>-1500.5</v>'));
+  assert.ok(text.includes('a&amp;&lt;b&gt;'));
+  assert.ok(text.includes('name="a b"'));                   // sheet names can't hold /
+});

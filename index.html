@@ -617,7 +617,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=54;
+const APP_VER=55;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -4007,7 +4007,7 @@ function renderSet(){
 
     <div class="sec"><h2>البيانات</h2>
       <div class="list">
-        <button class="item" id="expCsv"><em>⤓</em><span class="nm">تصدير Excel (CSV)</span><span class="chev">‹</span></button>
+        <button class="item" id="expCsv"><em>⤓</em><span class="nm">تصدير Excel</span><span class="chev">‹</span></button>
         <div class="perf"></div>
         <button class="item" id="expJson"><em>⛁</em><span class="nm">نسخة احتياطية كاملة
           <small>${S.settings.lastBackup?'آخر نسخة '+dayLabel(iso(new Date(S.settings.lastBackup))):'لسه مأخدتش نسخة'}</small></span><span class="chev">‹</span></button>
@@ -4058,7 +4058,7 @@ function renderSet(){
   if($('#addAcc2')) $('#addAcc2').onclick=()=>acctSheet(null);
   $('#addRec').onclick=()=>recSheet(null);
   if($('#addCcy')) $('#addCcy').onclick=()=>ccySheet(-1);
-  $('#expCsv').onclick=exportCsv;
+  $('#expCsv').onclick=exportXlsx;
   $('#expJson').onclick=exportJson;
   $('#snapBtn').onclick=snapshotsSheet;
   $('#impJson').onclick=importJson;
@@ -4204,31 +4204,56 @@ function download(name,text,type){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(u),1500);
 }
-function exportCsv(){
+function excelSheets(){
+  const val=t=>t.kind==='inc'||t.kind==='ref'?t.amount:t.kind==='trf'?0:-t.amount, biz=hasBiz(), out=[];
+  const tx=[...S.tx].sort((a,b)=>a.date.localeCompare(b.date));
+  out.push({name:'الحركات',widths:[12,10,18,14,14,12,8,12,28,...(biz?[11,14]:[]),16,11,10],
+    rows:[['التاريخ','النوع','التصنيف','الحساب','إلى حساب','المبلغ','العملة','المبلغ الأصلي','ملاحظة',...(biz?['شخصي / الشقة','الوحدة']:[]),'آجل لـ','آجل فاضل','لمين'],
+      ...tx.map(t=>[t.date,KINDS[t.kind].label,t.kind==='trf'?'':catOf(t.cat).name,acctOf(t.acct).name,t.toAcct?acctOf(t.toAcct).name:'',val(t),t.ccy||'',t.ccy?t.raw:'',t.note||'',
+        ...(biz?[isBiz(t)?'الشقة':'شخصي',unitName(t.unitId)]:[]),t.credit?(t.credit.vendor||'آجل'):'',t.credit?creditLeft(t):'',personOf(t.who)?personOf(t.who).name:''])]});
+  /* month by month, from the first entry */
+  const first=tx.length?tx[0].date.slice(0,7):today().slice(0,7), ms=[];
+  for(let k=today().slice(0,7);k>=first;k=prevMonth(k)) ms.unshift(k);
+  const sc=biz?'mine':'all', mRows=ms.map(mk=>{
+    const end=mk===today().slice(0,7)?today():`${mk}-${String(dim(+mk.slice(0,4),+mk.slice(5))).padStart(2,'0')}`;
+    const i=incNet(mk,sc), e=expNet(mk,sc), row=[`${AR_MONTHS[+mk.slice(5)-1]} ${mk.slice(0,4)}`,i,e,i-e];
+    if(biz){ const r=rentalMonth(rentalData(),mk), sm=staySummary(S.stays,mk); row.push(sm.nights,sm.nights?(sm.net-sm.kept)/sm.nights:'',r.collected,r.cost,r.profit); }
+    row.push(Math.round(worthAt(end))); return row; });
+  const sum=c=>mRows.reduce((s,r)=>s+(+r[c]||0),0), totRow=[{v:'المجموع',b:1},{v:sum(1),b:1},{v:sum(2),b:1},{v:sum(3),b:1}];
+  if(biz){ const nights=sum(4), kept=ms.reduce((s,mk)=>{ const m=staySummary(S.stays,mk); return s+m.net-m.kept; },0);
+    totRow.push({v:nights,b:1},{v:nights?kept/nights:'',b:1},{v:sum(6),b:1},{v:sum(7),b:1},{v:sum(8),b:1}); }
+  totRow.push({v:'',b:1});
+  out.push({name:'كل شهر',widths:[14,12,12,12,...(biz?[8,12,12,12,12]:[]),14],
+    rows:[['الشهر',biz?'دخلي':'الدخل',biz?'مصاريفي':'المصاريف',biz?'فاضل ليّا':'الفاضل',...(biz?['ليالي الشقة','متوسط الليلة','اتحصّل من الشقة','مصاريف الشقة','مكسب الشقة']:[]),'فلوسك آخر الشهر'],...mRows,totRow]});
+  /* by category, this year */
+  const y=today().slice(0,4), by={};
+  tx.filter(t=>t.date.startsWith(y)&&(t.kind==='exp'||t.kind==='ref')&&inScope(t,sc)).forEach(t=>by[t.cat]=(by[t.cat]||0)+(t.kind==='exp'?t.amount:-t.amount));
+  const cats=Object.entries(by).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]), E=cats.reduce((s,[,v])=>s+v,0);
+  out.push({name:`البنود ${y}`,widths:[22,12,8],rows:[['التصنيف','المصروف','النسبة %'],...cats.map(([id,v])=>[catOf(id).name,v,Math.round(v/E*1000)/10]),[{v:'المجموع',b:1},{v:E,b:1},{v:100,b:1}]]});
+  out.push({name:'الحسابات',widths:[18,8,14,8,14],rows:[['الحساب','النوع','الرصيد','العملة','بالجنيه'],
+    ...liveAccts().map(a=>[a.name,a.type==='cash'?'كاش':'بنك',balance(a.id),a.ccy||S.settings.cur,Math.round(balanceBase(a.id))]),
+    [{v:'المجموع',b:1},{v:'',b:1},{v:'',b:1},{v:'',b:1},{v:Math.round(netWorth()),b:1}]]});
+  const cr=credits();
+  if(S.debts.length||cr.length) out.push({name:'سلف وآجل',widths:[16,12,12,12,12,12,12,24],rows:[['مين','النوع','التاريخ','المبلغ','اتدفع','فاضل','الميعاد','ملاحظة'],
+    ...S.debts.map(d=>[d.person,d.dir==='out'?'ليّ عنده':'عليّ له',d.date,d.amount,debtPaid(d)||0,d.settledAt?0:debtLeft(d),d.due||'',d.note||'']),
+    ...cr.map(t=>[t.credit.vendor||'آجل','شراء آجل',t.date,t.amount,creditPaid(t),creditLeft(t),t.credit.due||'',t.note||''])]});
+  if(S.stays.length) out.push({name:'الحجوزات',widths:[14,16,12,7,12,10,12,12,12,10],rows:[['الوحدة','الضيف','الوصول','الليالي','الإجمالي','العمولة','الصافي','المصدر','اتدفع','الباقي'],
+    ...S.stays.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(st=>[unitName(st.unitId)+(st.cancelled?' (ملغي)':''),st.guest||'',st.from,st.nights,st.total,st.fee||0,stayNet(st),CH[st.channel].name,stayPaid(st),stayLeft(st)])]});
+  if(S.rents.length) out.push({name:'إيجار شهري',widths:[16,14,12,30],rows:[['الساكن','الوحدة','الإيجار','شهور اتحصّلت'],
+    ...S.rents.map(r=>[r.tenant,unitName(r.unitId),r.amount,(r.paid||[]).join(' ')])]});
+  return out;
+}
+async function exportXlsx(){
   if(!S.tx.length) return toast('مفيش بيانات للتصدير');
-  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
-  const head=['التاريخ','النوع','التصنيف','الحساب','إلى حساب','المبلغ','العملة الأصلية','المبلغ الأصلي','ملاحظة','شخصي / إيجارات','الوحدة','آجل لـ','آجل فاضل','لمين'].map(q).join(',');
-  const val=t=>t.kind==='inc'||t.kind==='ref'?t.amount:t.kind==='trf'?0:-t.amount;
-  const body=[...S.tx].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>
-    [t.date,KINDS[t.kind].label,t.kind==='trf'?'':catOf(t.cat).name,acctOf(t.acct).name,
-     t.toAcct?acctOf(t.toAcct).name:'',val(t),t.ccy||'',t.raw||'',t.note||'',isBiz(t)?'إيجارات':'شخصي',unitName(t.unitId),t.credit?(t.credit.vendor||'آجل'):'',t.credit?creditLeft(t):'',personOf(t.who)?personOf(t.who).name:''].map(q).join(',')).join('\n');
-  let csv=head+'\n'+body;
-  csv+='\n\n'+['الحسابات','الاسم','النوع','الرصيد'].map(q).join(',')+'\n'+
-       S.accts.map(a=>['',a.name+(a.ccy?` (${a.ccy})`:''),a.type==='cash'?'كاش':'بنك',balance(a.id)+(a.ccy?` ${a.ccy} ≈ ${Math.round(balanceBase(a.id))}`:'')].map(q).join(',')).join('\n');
-  if(S.debts.length)
-    csv+='\n\n'+['السلف','الاسم','الاتجاه','المبلغ','التاريخ','موعد السداد','سُدّدت','ملاحظة','المسدّد','الطريقة','طرق السداد'].map(q).join(',')+'\n'+
-      S.debts.map(d=>['',d.person,d.dir==='out'?'ليّ عنده':'عليّ له',d.amount,d.date,d.due||'',d.settledAt||'',d.note||'',debtPaid(d)||'',d.acct?acctOf(d.acct).name:'',
-        [...new Set((d.pays||[]).filter(p=>p.acct).map(p=>acctOf(p.acct).name))].join(' / ')].map(q).join(',')).join('\n');
-  if(S.rents.length)
-    csv+='\n\n'+['الإيجارات','الساكن','الوحدة','الإيجار','شهور محصّلة','محصّل جزئياً'].map(q).join(',')+'\n'+
-      S.rents.map(r=>['',r.tenant,unitName(r.unitId),r.amount,(r.paid||[]).join(' '),
-        Object.entries(r.part||{}).map(([m,v])=>`${m} (${v})`).join(' ')].map(q).join(',')).join('\n');
-  if(S.stays.length)
-    csv+='\n\n'+['الحجوزات','الوحدة','الضيف','الوصول','الليالي','الإجمالي','العمولة','الصافي','المصدر','المدفوع','الباقي','الدفعات'].map(q).join(',')+'\n'+
-      S.stays.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(st=>['',unitName(st.unitId)+(st.cancelled?' (ملغي)':''),st.guest||'',st.from,st.nights,st.total,st.fee||0,stayNet(st),
-        CH[st.channel].name,stayPaid(st),stayLeft(st),(st.pays||[]).map(p=>`${p.date} ${p.amount} ${acctOf(p.acct).name}`).join(' / ')].map(q).join(',')).join('\n');
-  download(`qersh-abyad-${today()}.csv`,csv,'text/csv;charset=utf-8');
-  toast('اتصدر ملف CSV');
+  const name=`qersh-abyad-${today()}.xlsx`, type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const bytes=buildXlsx(excelSheets());
+  let file=null; try{ file=new File([bytes],name,{type}); }catch(e){}
+  if(file && navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file],title:name}); toast('ملف Excel جاهز'); return; }
+    catch(e){ if(e.name==='AbortError') return; } }
+  const u=URL.createObjectURL(new Blob([bytes],{type})), a=document.createElement('a'); a.href=u; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500);
+  toast('ملف Excel جاهز');
 }
 const backupJson=photos=>JSON.stringify({v:4,at:new Date().toISOString(),settings:S.settings,cats:S.cats,acct:S.accts,
   tx:S.tx,recur:S.recur,debt:S.debts,recon:S.recons,plan:S.plans,rent:S.rents,stay:S.stays,goal:S.goals,...(photos?{photo:photos}:{})});
