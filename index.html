@@ -624,7 +624,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=59;
+const APP_VER=60;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1320,10 +1320,11 @@ function renderReadout(){
   $('#tag').innerHTML=tag;
   const ok = Number(a)>0 && (k!=='trf' || (S.draft.toAcct && S.draft.toAcct!==S.draft.acct));
   $('#save').disabled=!ok;
-  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit||!!S.draft.credit||!!S.draft.photo);
+  $('#noteBtn').classList.toggle('has',!!S.draft.note||S.draft.date!==today()||!!S.draft.ccy||!!S.draft.unit||!!S.draft.credit||!!S.draft.photo||!!S.draft.split);
   if(S.draft.unit && k!=='trf' && k!=='inc') $('#tag').innerHTML+=` · 🏘 ${esc(unitName(S.draft.unit))}`;
   if(S.draft.photo && k!=='trf') $('#tag').innerHTML+=' · 📷';
   if(S.draft.who && (k==='exp'||k==='ref')) $('#tag').innerHTML+=` · ${esc(personLbl(S.draft.who))}`;
+  if(S.draft.split && k==='exp' && !S.draft.credit) $('#tag').innerHTML+=` · 💳 + ${esc(acctOf(S.draft.split.acct).name)} <span class="num">${money0(S.draft.split.amount)}</span>`;
   if(S.draft.credit && k==='exp') $('#tag').innerHTML+=` · 🧾 آجل${S.draft.credit.vendor?' — '+esc(S.draft.credit.vendor):''}`;
   if(S.draft.fee && k==='trf') $('#tag').innerHTML+=` · رسوم ${money(S.draft.fee)}`;
   $('#catLbl').hidden = S.draft.kind==='trf' || !PRO();
@@ -1361,23 +1362,60 @@ $('#quick').addEventListener('click',async e=>{
   await commit({kind:S.draft.kind,amount:q.amount,cat:q.cat,acct:q.acct,note:q.note||'',date:today()});
 });
 
+/* ── one expense paid from two accounts: saved as two linked parts (same grp), so every balance and
+   report stays a plain sum; the log shows them as one line ── */
+const splitAccts=()=>liveAccts().filter(a=>!a.ccy);
+const partsOf=t=>t&&t.grp?S.tx.filter(x=>x.grp===t.grp):t?[t]:[];
+const mainOf=t=>t&&t.grp?(S.tx.find(x=>x.id===t.grp)||t):t;
+function splitField(pre,main,part){
+  const opts=splitAccts(); if(opts.length<2) return '';
+  const other=part?part.acct:(opts.find(a=>a.id!==main)||opts[0]).id;
+  return `<div class="f" id="${pre}SpW"><label class="chk"><input type="checkbox" id="${pre}Sp" ${part?'checked':''}><span>💳 دفعت جزء من حساب تاني</span></label>
+    <div id="${pre}SpB" ${part?'':'hidden'} style="margin-top:8px"><div class="row2">
+      <div><label>الحساب التاني</label><select id="${pre}SpA">${opts.map(a=>`<option value="${a.id}" ${a.id===other?'selected':''}>${a.emoji} ${esc(a.name)}</option>`).join('')}</select></div>
+      <div><label>دفعت منه كام</label><input id="${pre}SpN" type="number" inputmode="decimal" min="0" step="0.01" placeholder="مثلاً 400" value="${part?part.amount:''}"></div></div>
+      <div class="foot" id="${pre}SpL" style="margin:6px 0 0"></div></div></div>`;
+}
+/* the live line under it: «Visa 600 + كاش 400 = 1,000» */
+function bindSplit(pre,totalFn,mainFn){
+  if(!$('#'+pre+'Sp')) return;
+  const upd=()=>{ const T=totalFn(), a=Number($('#'+pre+'SpN').value)||0, m=acctOf(mainFn()), o=acctOf($('#'+pre+'SpA').value), L=$('#'+pre+'SpL');
+    L.innerHTML=o.id===m.id?`<span style="color:var(--red)">اختار حساب غير ${esc(m.name)}</span>`
+      :!(a>0)?`اكتب دفعت كام من ${esc(o.name)}، والباقي يتخصم من ${esc(m.name)}`
+      :T>0&&a>=T?`<span style="color:var(--red)">لازم يبقى أقل من المبلغ كله (${money(T)})</span>`
+      :T>0?`${esc(m.name)} <b class="num">${money(T-a)}</b> + ${esc(o.name)} <b class="num">${money(a)}</b> = <span class="num">${money(T)}</span>`
+      :`والباقي يتخصم من ${esc(m.name)}`; };
+  $('#'+pre+'Sp').onchange=e=>{ $('#'+pre+'SpB').hidden=!e.target.checked; upd(); };
+  $('#'+pre+'SpA').onchange=upd; $('#'+pre+'SpN').oninput=upd; upd();
+  return upd;
+}
+const readSplit=pre=>$('#'+pre+'Sp')&&$('#'+pre+'Sp').checked&&Number($('#'+pre+'SpN').value)>0
+  ?{acct:$('#'+pre+'SpA').value,amount:Math.round(Number($('#'+pre+'SpN').value)*100)/100}:null;
+const splitLbl=ps=>ps.map(x=>`${acctOf(x.acct).name} ${money0(x.amount)}`).join(' + ');
+
 async function commit(t,onUndo){
-  const rec={id:uid(),at:Date.now(),...t};
+  const {_split:sp,...base}=t;
+  const rec={id:uid(),at:Date.now(),...base};
   if(rec.note!=null) rec.note=cleanText(rec.note);
-  await Store.put('tx',rec);
+  let part=null;
+  if(sp&&rec.kind==='exp'&&!rec.credit&&!rec.ccy&&sp.acct!==rec.acct&&sp.amount>0&&sp.amount<rec.amount){
+    rec.amount=Math.round((rec.amount-sp.amount)*100)/100; rec.grp=rec.id;
+    part={...rec,id:uid(),at:rec.at+1,acct:sp.acct,amount:sp.amount}; }
+  await Store.put('tx',rec); if(part) await Store.put('tx',part);
   /* budgets are personal: a rental expense never pushes them */
   const mk=mKey(rec.date), c=rec.kind==='exp'&&!(hasBiz()&&isBiz(rec))?catOf(rec.cat):null;
   const catSpent=()=>sum(inMonth(mk,'exp',MINE()).filter(x=>x.cat===rec.cat))-sum(inMonth(mk,'ref',MINE()).filter(x=>x.cat===rec.cat));
   const b0=c?catSpent():0, m0=c?expNet(mk,MINE()):0;
-  S.tx.push({...rec,_new:1}); sortTx();
+  S.tx.push({...rec,_new:1}); if(part) S.tx.push({...part,_new:1}); sortTx();
   const warn=c?budgetWarn(c,b0,catSpent(),m0,expNet(mk,MINE()),budgetFor(mk)):'';
   let label;
   if(rec.kind==='trf') label=`${acctOf(rec.acct).emoji}→${acctOf(rec.toAcct).emoji}`;
   else label=catOf(rec.cat).emoji;
   const sign=(rec.kind==='inc'||rec.kind==='ref')?'+':'';
   const cr=rec.credit?`<br><small>🧾 آجل — الرصيد مش هيتحرك غير لما تدفع</small>`:'';
-  toast(`${label} <span class="a">${sign}${money(rec.amount)}</span> ${esc(S.settings.cur)}${cr}${warn}`,
-    async()=>{ await Store.del('tx',rec.id); S.tx=S.tx.filter(x=>x.id!==rec.id);
+  const spl=part?`<br><small>💳 ${esc(splitLbl([rec,part]))}</small>`:'';
+  toast(`${label} <span class="a">${sign}${money(rec.amount+(part?part.amount:0))}</span> ${esc(S.settings.cur)}${cr}${spl}${warn}`,
+    async()=>{ await Store.del('tx',rec.id); if(part) await Store.del('tx',part.id); S.tx=S.tx.filter(x=>x.id!==rec.id&&(!part||x.id!==part.id));
       if(onUndo) await onUndo();
       renderRail(); renderQuick(); renderAccts(); renderLog(); toast('اتراجعنا'); });
   renderRail(); renderQuick(); renderAccts(); renderReadout();
@@ -1507,6 +1545,7 @@ $('#noteBtn').addEventListener('click',()=>{
     <div class="f"><label>التاريخ</label><input id="fDate" type="date" value="${S.draft.date}"></div>
     ${unitField(S.draft.unit,S.draft.kind)}
     ${whoField(S.draft.who||'',S.draft.kind)}
+    ${S.draft.kind==='exp'&&!acctOf(S.draft.acct).ccy?splitField('f',S.draft.acct,S.draft.split||null):''}
     ${creditFields(S.draft.kind==='exp'&&PRO()?(S.draft.credit||null):undefined)}
     ${S.draft.kind!=='trf'?`<div class="f"><label>صورة الإيصال (لو حابب)</label><div id="fPhW">${S.draft.photo?`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px">`:''}
       ${photoPicker('fPh',S.draft.photo?'📷 غيّر الصورة':'📷 صوّر الإيصال أو اختار صورة')}</div></div>`:''}
@@ -1515,6 +1554,7 @@ $('#noteBtn').addEventListener('click',()=>{
     ${ccOpts}
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="fOk">تم</button></div>`);
+  bindSplit('f',()=>Number(S.draft.amt)||0,()=>S.draft.acct);
   if($('#fPh')) $('#fPh').onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
     try{ S.draft.photo=await shrinkPhoto(f);
       $('#fPhW').innerHTML=`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px"><div style="text-align:center;font-size:12.5px;color:var(--mint)">✓ الصورة هتتحفظ مع المصروف</div>`;
@@ -1530,6 +1570,10 @@ $('#noteBtn').addEventListener('click',()=>{
     S.draft.who=$('#fWho')?$('#fWho').value:'';
     S.draft.fee=$('#fFee')?Math.max(0,Number($('#fFee').value)||0):0;
     S.draft.credit=readCredit();
+    const sp=readSplit('f');
+    if(sp&&sp.acct===S.draft.acct) return toast('اختار حساب تاني غير اللي فوق');
+    if(sp&&Number(S.draft.amt)>0&&sp.amount>=Number(S.draft.amt)) return toast('اللي من الحساب التاني لازم يبقى أقل من المبلغ كله');
+    S.draft.split=sp;
     closeSheet(); renderReadout();
   };
 });
@@ -1673,6 +1717,10 @@ $('#save').addEventListener('click',async()=>{
   if(cc){ t.ccy=cc.code; t.raw=raw; t.rate=cc.rate; }
   if(S.draft.unit && (k==='exp'||k==='ref')) t.unitId=S.draft.unit;
   if(S.draft.credit && k==='exp' && PRO()) t.credit={...S.draft.credit,pays:[]};
+  if(S.draft.split && k==='exp' && !t.credit && !cc){
+    if(S.draft.split.amount>=t.amount) return toast('اللي من الحساب التاني لازم يبقى أقل من المبلغ كله — عدّله من (✎)');
+    if(S.draft.split.acct===t.acct) return toast('الحساب التاني نفس الحساب — عدّله من (✎)');
+    t._split=S.draft.split; }
   if((k==='exp'||k==='ref') && S.draft.who) t.who=S.draft.who;
   else if((k==='exp'||k==='ref') && autoWho(t.note,t.cat)){ t.who=autoWho(t.note,t.cat); t.whoAuto=1; }
   if(k!=='trf' && S.draft.catPicked && S.draft.note) await learnFrom(S.draft.note,S.draft.cat);
@@ -1685,7 +1733,7 @@ $('#save').addEventListener('click',async()=>{
     await Store.put('tx',f); S.tx.push(f);
   }
   const ph=k!=='trf'?S.draft.photo:null;
-  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null; S.draft.who='';
+  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null; S.draft.who=''; S.draft.split=null;
   const rec=await commit(t);
   if(ph&&rec){ await savePhoto(rec.id,ph); renderLog(); }
 });
@@ -1747,7 +1795,7 @@ function renderLog(){
   const active=S.filter.cat||S.filter.acct||S.filter.kind||S.filter.scope||S.filter.who;
   $('#logFilter').textContent=active?'إلغاء التصفية':'تصفية';
   const tot=sum(list.filter(t=>t.kind==='exp'))-sum(list.filter(t=>t.kind==='ref'));
-  const n=list.length+dl.length+cl.length;
+  const n=list.filter(t=>!t.grp||t.id===t.grp||S.filter.acct||!list.some(x=>x.id===t.grp)).length+dl.length+cl.length;
   $('#logSub').innerHTML=n
     ?`${n} حركة${S.search||active?` · <span class="num">${money0(tot)}</span> ${esc(S.settings.cur)} مصاريف`:''}`
     :'فاضي';
@@ -1767,18 +1815,21 @@ function renderLog(){
     const dI=sum(day.filter(t=>t.kind==='inc'));
     const net=dI-dE, anyInc=day.some(t=>t.kind==='inc');
     const rows=day.map(t=>{
+      const mates=t.grp&&!S.filter.acct?day.filter(x=>x.grp===t.grp).sort((x,y)=>(y.id===y.grp)-(x.id===x.grp)):[t];
+      if(mates.length>1&&t.id!==t.grp&&mates.some(x=>x.id===t.grp)) return '';
+      const amt=mates.reduce((v,x)=>v+x.amount,0);
       const isTrf=t.kind==='trf';
       const icon=isTrf?'⇄':catOf(t.cat).emoji;
       const name=isTrf?`${acctOf(t.acct).name} ← ${acctOf(t.toAcct).name}`:catOf(t.cat).name;
-      const bits=[t.note, t.who?personLbl(t.who):'', S.photoIds.has(t.id)?'📎':'', t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
+      const bits=[t.note, mates.length>1?'💳 '+splitLbl(mates):t.grp?'💳 جزء':'', t.who?personLbl(t.who):'', S.photoIds.has(t.id)?'📎':'', t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
         t.credit?`🧾 آجل${t.credit.vendor?' — '+t.credit.vendor:''}${creditLeft(t)>0?` · فاضل ${money0(creditLeft(t))}`:' · اتدفع'}`:'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
       return `<button class="row${t._new?' print':''}" data-tx="${t.id}">
         <em${isTrf?' style="--t:var(--iris)"':tone(catOf(t.cat))}>${icon}</em>
         <span class="meta"><span class="nm">${esc(name)}</span>${bits.length?`<span class="nt">${esc(bits.join(' · '))}</span>`:''}</span>
-        ${isTrf?'':`<span class="pill">${t.credit?'آجل':esc(acctOf(t.acct).name)}</span>`}
-        <span class="val${cls}">${sign}${money(t.amount)}</span></button>`;
+        ${isTrf?'':`<span class="pill">${t.credit?'آجل':mates.length>1?'💳 حسابين':esc(acctOf(t.acct).name)}</span>`}
+        <span class="val${cls}">${sign}${money(amt)}</span></button>`;
     }).concat((gd[d]||[]).map(x=>{
       const plus=(x.d.dir==='in')!==x.pay;
       return `<button class="row" data-debtrow="${x.d.id}">
@@ -1857,7 +1908,8 @@ function creditSheet(id){
   };
 }
 function editTx(id){
-  const t=S.tx.find(x=>x.id===id); if(!t) return;
+  const t=mainOf(S.tx.find(x=>x.id===id)); if(!t) return;
+  const mate=partsOf(t).find(x=>x.id!==t.id)||null;
   if(t.stay && S.stays.some(st=>st.id===t.stay)){ toast('الدفعة دي من حجز — عدّلها من الحجز'); return staySheet(t.stay); }
   if(isFxTrf(t)) return fxSheet({txId:t.id});
   /* on a euro / dollar account the amount is edited in that currency and the account stays one of the same currency */
@@ -1871,7 +1923,7 @@ function editTx(id){
     ${t.ccy&&!fxA?`<p class="lede">مسجّل بـ ${money(t.raw)} ${esc(t.ccy)} بسعر ${t.rate}. التعديل بالعملة الأساسية.</p>`:''}
     ${fxA?`<p class="lede">من حساب بالـ${esc(fxA.ccy)} — بسعر ${t.rate||rateOf(fxA)} يعني ${money(t.amount)} ${esc(S.settings.cur)}.</p>`:''}
     <div class="f"><div class="row2">
-      <div><label>المبلغ (${esc(fxA?symOf(fxA):S.settings.cur)})</label><input id="eAmt" type="number" inputmode="decimal" step="0.01" value="${fxA&&t.raw!=null?t.raw:t.amount}"></div>
+      <div><label>${mate?'المبلغ كله':'المبلغ'} (${esc(fxA?symOf(fxA):S.settings.cur)})</label><input id="eAmt" type="number" inputmode="decimal" step="0.01" value="${fxA&&t.raw!=null?t.raw:mate?Math.round((t.amount+mate.amount)*100)/100:t.amount}"></div>
       <div><label>التاريخ</label><input id="eDate" type="date" value="${t.date}"></div>
     </div></div>
     <div class="f"><label>النوع</label><select id="eKind">${kOpts}</select></div>
@@ -1879,6 +1931,7 @@ function editTx(id){
       ${catsOf(t.kind==='ref'?'exp':t.kind).map(c=>`<option value="${c.id}" ${c.id===t.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
     <div class="f"><label>${isTrf?'من حساب':'الحساب'}</label><select id="eAcct">${fxA?S.accts.filter(a=>a.ccy===fxA.ccy&&(!a.archived||a.id===t.acct)).map(a=>`<option value="${a.id}" ${a.id===t.acct?'selected':''}>${a.emoji} ${esc(a.name)}</option>`).join(''):acctOpts(t.acct)}</select></div>
     <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">${acctOpts(t.toAcct)}</select></div>
+    <div id="eSpW">${t.kind==='exp'&&!fxA&&!t.credit?splitField('e',t.acct,mate):''}</div>
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
     <div id="eUnitW">${unitField(t.unitId||'',t.kind,'eUnit')}</div>
     <div id="eWhoW">${whoField(t.who||'',t.kind,'eWho')}</div>
@@ -1898,6 +1951,9 @@ function editTx(id){
     if(!creditPaid(t)) $('#eCrW').innerHTML=creditFields(k==='exp'&&PRO()?($('#cOn')?readCredit():(t.credit||null)):undefined);
   };
   if($('#eCrPay')) $('#eCrPay').onclick=()=>creditSheet(t.id);
+  const spUpd=bindSplit('e',()=>Number($('#eAmt').value)||0,()=>$('#eAcct').value);
+  if(spUpd){ $('#eAmt').addEventListener('input',spUpd); $('#eAcct').addEventListener('change',spUpd);
+    $('#eKind').addEventListener('change',()=>{ $('#eSpW').hidden=$('#eKind').value!=='exp'; }); }
   /* the receipt: shown small, tap to see it big; replaced or removed right away */
   const showPh=async()=>{ const box=$('#ePh'); if(!box) return;
     const p=S.photoIds.has(t.id)?await Store.get('photo',t.id):null;
@@ -1915,6 +1971,9 @@ function editTx(id){
     if(creditPaid(t)>0 && k!=='exp'){ toast('عليه دفعات آجل — امسحها الأول'); return; }
     /* validate before touching t, so a rejected edit doesn't leave memory out of sync with the DB */
     if(k==='trf' && $('#eTo').value===$('#eAcct').value){ toast('الحسابين نفس الحساب'); return; }
+    const sp=k==='exp'&&!fxA&&!($('#cOn')&&$('#cOn').checked)?readSplit('e'):null;
+    if(sp&&sp.acct===$('#eAcct').value) return toast('الحساب التاني نفس الحساب');
+    if(sp&&sp.amount>=a) return toast('اللي من الحساب التاني لازم يبقى أقل من المبلغ كله');
     /* amount is edited in base currency — the original foreign amount no longer applies;
        on a foreign account it's edited in that currency and converted at the tx's own rate */
     let amt=a;
@@ -1939,14 +1998,20 @@ function editTx(id){
       else delete t.credit; }
     else delete t.credit;
     if(k!=='trf' && t.cat!==catBefore && t.note) await learnFrom(t.note,t.cat);
+    /* the second account's part follows everything but its own account and amount */
+    if(sp){ t.amount=Math.round((amt-sp.amount)*100)/100; t.grp=t.id;
+      const m=mate||{id:uid(),at:(t.at||Date.now())+1};
+      const {id:_i,at:_a,...same}=t; Object.assign(m,same,{acct:sp.acct,amount:sp.amount,grp:t.id}); delete m.credit;
+      if(!mate) S.tx.push(m); await Store.put('tx',m); }
+    else { if(mate){ await Store.del('tx',mate.id); S.tx=S.tx.filter(x=>x.id!==mate.id); } delete t.grp; }
     await Store.put('tx',t); sortTx();
     closeSheet(); renderLog(); renderRail(); renderAccts(); toast('اتعدل');
   };
   $('#eDel').onclick=async()=>{
-    await Store.del('tx',t.id); S.tx=S.tx.filter(x=>x.id!==t.id);
+    await Store.del('tx',t.id); if(mate) await Store.del('tx',mate.id); S.tx=S.tx.filter(x=>x.id!==t.id&&(!mate||x.id!==mate.id));
     const ph=await dropPhoto(t.id);
     closeSheet(); renderLog(); renderRail(); renderAccts(); renderQuick();
-    toast('اتحذف',async()=>{ await Store.put('tx',t); S.tx.push(t); sortTx(); if(ph) await savePhoto(t.id,ph.data);
+    toast('اتحذف',async()=>{ await Store.put('tx',t); S.tx.push(t); if(mate){ await Store.put('tx',mate); S.tx.push(mate); } sortTx(); if(ph) await savePhoto(t.id,ph.data);
       renderLog(); renderRail(); renderAccts(); renderQuick(); toast('رجعت'); });
   };
 }
