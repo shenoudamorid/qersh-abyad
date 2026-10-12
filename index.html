@@ -624,7 +624,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=60;
+const APP_VER=61;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1559,6 +1559,7 @@ $('#noteBtn').addEventListener('click',()=>{
     try{ S.draft.photo=await shrinkPhoto(f);
       $('#fPhW').innerHTML=`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px"><div style="text-align:center;font-size:12.5px;color:var(--mint)">✓ الصورة هتتحفظ مع المصروف</div>`;
     }catch(_){ toast('مقدرتش أفتح الصورة دي'); } };
+  const unit0=$('#fUnit')?$('#fUnit').value:'';
   $('#fOk').onclick=()=>{
     S.draft.note=cleanText($('#fNote').value);
     /* no chip tapped yet → let the note pick the category («شاورما» → أكل وشرب) */
@@ -1567,6 +1568,8 @@ $('#noteBtn').addEventListener('click',()=>{
     S.draft.date=$('#fDate').value||today();
     if(!S.draft.ccyAuto){ S.draft.ccy=$('#fCcy')?($('#fCcy').value||null):null; }
     S.draft.unit=$('#fUnit')?$('#fUnit').value:'';
+    if($('#fUnit')&&S.draft.unit!==unit0) S.draft.unitPicked=true;
+    if($('#fUnit')&&!S.draft.unit&&!S.draft.unitPicked&&(S.draft.kind==='exp'||S.draft.kind==='ref')){ const gu=guessUnit(S.draft.note); if(gu) S.draft.unit=gu; }
     S.draft.who=$('#fWho')?$('#fWho').value:'';
     S.draft.fee=$('#fFee')?Math.max(0,Number($('#fFee').value)||0):0;
     S.draft.credit=readCredit();
@@ -1597,7 +1600,7 @@ $('#nlBtn').addEventListener('click',()=>{
   const upd=()=>{
     const p=parseEntry($('#nlIn').value);
     $('#nlOut').innerHTML = p
-      ? `${KINDS[p.kind].label} · ${catOf(p.cat).emoji} ${esc(catOf(p.cat).name)} · ${esc(acctOf(p.acct).name)} · <span class="num">${money(p.amount)}</span> ${esc(S.settings.cur)}${p.note?' · '+esc(p.note):''}`
+      ? `${KINDS[p.kind].label} · ${catOf(p.cat).emoji} ${esc(catOf(p.cat).name)} · ${esc(acctOf(p.acct).name)} · <span class="num">${money(p.amount)}</span> ${esc(S.settings.cur)}${p.note?' · '+esc(p.note):''}${p.kind!=='inc'&&guessUnit(p.note)?' · 🏘 '+esc(unitName(guessUnit(p.note))):''}`
       : 'اكتب رقم على الأقل';
   };
   $('#nlIn').oninput=upd;
@@ -1651,7 +1654,8 @@ $('#nlBtn').addEventListener('click',()=>{
     if(!p){ $('#nlIn').focus(); return; }
     closeSheet();
     const w=(p.kind==='exp'||p.kind==='ref')?autoWho(p.note,p.cat):'';
-    await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{})});
+    const gu=(p.kind==='exp'||p.kind==='ref')?guessUnit(p.note):'';
+    await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{}),...(gu?{unitId:gu}:{})});
   };
 });
 
@@ -1676,7 +1680,8 @@ function siriMany(parts){
     const pick=[...document.querySelectorAll('[data-si]:checked')].map(c=>ps[+c.dataset.si].p);
     closeSheet();
     for(const p of pick){ const w=(p.kind==='exp'||p.kind==='ref')?autoWho(p.note,p.cat):'';
-      await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{})}); }
+      const gu=(p.kind==='exp'||p.kind==='ref')?guessUnit(p.note):'';
+      await commit({kind:p.kind,amount:p.amount,cat:p.cat,acct:p.acct,note:cleanText(p.note),date:today(),...(w?{who:w,whoAuto:1}:{}),...(gu?{unitId:gu}:{})}); }
     if(pick.length>1) toast(`اتسجلوا ${pick.length}`);
   };
 }
@@ -1716,6 +1721,7 @@ $('#save').addEventListener('click',async()=>{
   if(k==='trf') t.toAcct=S.draft.toAcct; else t.cat=S.draft.cat;
   if(cc){ t.ccy=cc.code; t.raw=raw; t.rate=cc.rate; }
   if(S.draft.unit && (k==='exp'||k==='ref')) t.unitId=S.draft.unit;
+  if(S.draft.unitPicked && (k==='exp'||k==='ref') && t.note) await learnUnit(S.draft.unit,t.note);
   if(S.draft.credit && k==='exp' && PRO()) t.credit={...S.draft.credit,pays:[]};
   if(S.draft.split && k==='exp' && !t.credit && !cc){
     if(S.draft.split.amount>=t.amount) return toast('اللي من الحساب التاني لازم يبقى أقل من المبلغ كله — عدّله من (✎)');
@@ -1733,7 +1739,7 @@ $('#save').addEventListener('click',async()=>{
     await Store.put('tx',f); S.tx.push(f);
   }
   const ph=k!=='trf'?S.draft.photo:null;
-  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null; S.draft.who=''; S.draft.split=null;
+  S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null; S.draft.who=''; S.draft.split=null; S.draft.unitPicked=false;
   const rec=await commit(t);
   if(ph&&rec){ await savePhoto(rec.id,ph); renderLog(); }
 });
@@ -1985,6 +1991,7 @@ function editTx(id){
     if(k==='trf'){ t.toAcct=$('#eTo').value; delete t.cat; }
     else { t.cat=$('#eCat').value; delete t.toAcct; }
     const u=$('#eUnit')?$('#eUnit').value:'';
+    if($('#eUnit')&&u!==(t.unitId||'')&&(k==='exp'||k==='ref')&&t.note) await learnUnit(u,t.note);
     delete t.unit;
     const w=$('#eWho')?$('#eWho').value:'';
     if(w!==(t.who||'')) delete t.whoAuto;
@@ -2685,9 +2692,15 @@ function peopleSheet(){
 
 /* ═══════ one-time tidy: old entries follow today's rules (tithe, a kid's category, the motorcycle) ═══════
    Runs once per device. Everything it changes is kept so one tap puts it all back. */
-const TIDY_V=1;
+const TIDY_V=2;
 async function autoTidy(){
-  if((S.settings.tidyV||0)>=TIDY_V) return null;
+  const v0=S.settings.tidyV||0;
+  if(v0>=TIDY_V) return null;
+  /* v2: «نظافة» is cleaning (بيت ومعيشة), not the rubbish fee (فواتير) — quiet, words only */
+  if(v0<2){ const bills=S.cats.find(c=>c.kind==='exp'&&c.name==='فواتير'), home=S.cats.find(c=>c.kind==='exp'&&c.name==='بيت ومعيشة');
+    if(bills&&(bills.words||[]).includes('نظافة')){ bills.words=bills.words.filter(w=>w!=='نظافة'); await Store.put('cats',bills); }
+    if(home){ const add=CAT_WORDS['بيت ومعيشة'].slice(0,14).filter(w=>!(home.words||[]).includes(w)); if(add.length){ home.words=[...add,...(home.words||[])]; await Store.put('cats',home); } } }
+  if(v0>=1){ S.settings.tidyV=TIDY_V; await saveSettings(); return null; }
   const copy=x=>JSON.parse(JSON.stringify(x)), U={tx:new Map(),cats:new Map(),recur:new Map(),newCat:null}, moved=[], notes=[];
   const keep=(m,x)=>{ if(!m.has(x.id)) m.set(x.id,copy(x)); };
   const movable=t=>(t.kind==='exp'||t.kind==='ref')&&!t.stay;
@@ -3320,6 +3333,17 @@ function unitField(val,kind,id='fUnit'){
   if(!us.length || !PRO() || (kind!=='exp'&&kind!=='ref')) return '';
   return `<div class="f"><label>تابع لوحدة؟ (يتخصم من مكسبها ومش بيتحسب من مصاريفك الشخصية)</label><select id="${id}">
     <option value="">لا — مصروف شخصي</option>${us.map(u=>`<option value="${esc(u)}" ${u===val?'selected':''}>🏘 ${esc(unitName(u))}</option>`).join('')}</select></div>`;
+}
+/* the unit a note points to («كهربا بالمز»، «مناديل للضيف»، or what you tagged before) — rentals mode only */
+const guessUnit=note=>PRO()&&stayUnits().length?unitFromText(note,allUnits().filter(u=>!u.archived)):'';
+/* you tagged a note with a unit yourself → next time that note finds it alone; untagged → forgotten */
+async function learnUnit(uid,note){
+  const ph=learnPhrase(note); if(!ph) return;
+  const key=norm(ph); let ch=false;
+  for(const u of allUnits()){ const has=(u.words||[]).some(w=>norm(w)===key);
+    if(u.id===uid&&!has&&guessUnit(note)!==uid){ u.words=[...(u.words||[]),ph]; ch=true; }
+    else if(u.id!==uid&&has){ u.words=u.words.filter(w=>norm(w)!==key); ch=true; } }
+  if(ch) await saveSettings();
 }
 /* old data named its unit; give every name an id and tag the income bookings and contracts logged */
 /* categories that came over with no keywords (older versions, old backups) get the built-in

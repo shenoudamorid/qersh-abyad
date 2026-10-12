@@ -608,3 +608,17 @@ test('a «الموتوسيكل» category takes the vehicle words from مواص�
   assert.ok(L.stealWords(L.CAT_WORDS['أكل وشرب'], P.words, P.names).includes('زيت'));
   assert.ok(L.stealWords(L.CAT_WORDS['بيت ومعيشة'], P.words, P.names).includes('صيانة'));
 });
+
+test('a note finds its rented unit by name, learned words, or (one unit) guest words', () => {
+  const one = [{ id: 'p', name: 'بالمز', words: ['نضافة الشقة'] }];
+  assert.equal(L.unitFromText('كهربا بالمز', one), 'p');
+  assert.equal(L.unitFromText('نضافة الشقة', one), 'p');
+  assert.equal(L.unitFromText('تنضيف بعد الضيف', one), 'p');
+  assert.equal(L.unitFromText('عيش', one), '');
+  const two = [...one, { id: 'q', name: 'الدور التاني', words: [] }];
+  assert.equal(L.unitFromText('للضيف', two), '');            // guest words are ambiguous with two units
+  assert.equal(L.unitFromText('سباك الدور التاني', two), 'q');
+  const exp = Object.keys(L.CAT_WORDS).map(n => ({ id: n, name: n, words: L.CAT_WORDS[n] }));
+  assert.equal(L.guessCat('نظافة الشقة', exp).id, 'بيت ومعيشة');
+  assert.equal(L.guessCat('رسوم نظافة', exp).id, 'فواتير');
+});

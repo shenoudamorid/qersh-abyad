@@ -484,7 +484,7 @@ const CAT_WORDS={
     'فحص كمبيوتر','اكسسوارات عربية','فرش عربية','كفر كراسي','معطر عربية','شاشة عربية','كاميرا خلفية',
     'حساسات ركن','جهاز انذار','تأمين ضد الغير','رخصة مرور','تجديد رخصة العربية','لوحات','نمر العربية',
     'تحويل نمر','توكيل بيع','شهر العربية','ركنة الشارع','الباركينج','سايس الشارع','جراج المول','جراج المستشفى'],
-  'بيت ومعيشة':['شقة','منظفات','صابون','صابونة','مسحوق','اريال','برسيل','تايد','داوني','كلور','فلاش','ديتول',
+  'بيت ومعيشة':['نظافة','نضافة','تنظيف','تنضيف','نضافة الشقة','نظافة الشقة','تنظيف الشقة','تنضيف الشقة','عاملة نضافة','غسيل فرش','غسيل الفرش','غسيل ملايات','غسيل المفارش','مغسلة','شقة','منظفات','صابون','صابونة','مسحوق','اريال','برسيل','تايد','داوني','كلور','فلاش','ديتول',
     'ريحة','معطر','مناديل','فاين','ورق تواليت','ورق مطبخ','شامبو','بلسم','معجون','فرشة سنان','موس','شفرات',
     'مزيل','ليفة','اسفنجة','جوانتي','اكياس','اكياس زبالة','فوط','مقشة','جاروف','مساحة','ممسحة','سلك مواعين',
     'سائل اطباق','فيري','اثاث','عفش','نجار','سباك','كهربائي','نقاش','دهان','محارة','سيراميك','الوميتال',
@@ -586,7 +586,7 @@ const CAT_WORDS={
     'انبوبة','انبوبه','فاتورة الغاز','نت','انترنت','واي فاي','وايفاي','راوتر','باقة','باقة النت','رصيد',
     'كارت شحن','كروت شحن','شحن','شحن رصيد','فكة','فودافون','فودافون كاش','اورنج','اتصالات','وي','تليفون',
     'تليفون ارضي','ارضي','خط','موبايل الشهر','اشتراك','اشتراكات','قسط','اقساط','تقسيط','فاليو','سهولة',
-    'كونتكت','امان','تامين','تأمين','تامينات','ضرايب','ضريبة','عقارية','زبالة','نظافة','رسوم نظافة','دش',
+    'كونتكت','امان','تامين','تأمين','تامينات','ضرايب','ضريبة','عقارية','زبالة','رسوم نظافة','دش',
     'ريسيفر','اشتراك الدش','تجديد','صيانة الاسانسير','اتحاد ملاك','فوري','ممكن','مدفوعات','الفاتورة',
     'فاتورة الكهربا','فاتورة الكهرباء','فاتورة النور','كهربا الشهر','شحن الكهربا','كارت كهربا','كارت العداد',
     'عداد الكارت','عداد كودي','كود العداد','ممارسة','فاتورة المية','مياه الشرب','الصرف الصحي',
@@ -985,6 +985,14 @@ function stealWords(other,words,names){
     return !ts.some(t=>single.has(t)) || ts.some(t=>car.has(t));
   });
 }
+/* which rented unit a note is about: its name («بالمز»), words learned from past entries, and —
+   with a single unit — guest words («تنضيف بعد الضيف»). Only one unit matching counts. */
+const GUEST_W=['الضيف','للضيف','ضيف','الضيوف','ضيوف','جيست','جست','guest','تشيك اوت','بعد الضيف','الشقة المؤجرة','شقة الايجار','الشقة اللي بأجرها'];
+function unitFromText(text,units){
+  if(!text||!units||!units.length) return '';
+  const hit=units.filter(u=>pinCat(text,[{cat:u.id,words:[u.name,...(u.words||[]),...(units.length===1?GUEST_W:[])]}]));
+  return hit.length===1?hit[0].id:'';
+}
 /* words that always mean «for the kids» — they beat any other keyword («شامبو اطفال» isn't بيت ومعيشة) */
 const KID_W=['اطفال','طفل','طفلة','بيبي','رضيع','رضع','نونو','بامبرز','حفاض','حفاضة','حفاضات','بيبي جوي','مولفكس',
   'سيريلاك','ببرونة','ببرونات','بزازة','سكاتة','حضانة','تطعيم','تطعيمات','لعب اطفال','العاب اطفال','لبس اطفال','هدوم اطفال'];
@@ -1155,4 +1163,4 @@ if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextM
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,allocatePayment,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries,pinCat,KID_W,catPreset,stealWords};
+  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries,pinCat,KID_W,catPreset,stealWords,unitFromText,GUEST_W};
