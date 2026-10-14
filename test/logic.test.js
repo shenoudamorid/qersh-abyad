@@ -622,3 +622,8 @@ test('a note finds its rented unit by name, learned words, or (one unit) guest w
   assert.equal(L.guessCat('نظافة الشقة', exp).id, 'بيت ومعيشة');
   assert.equal(L.guessCat('رسوم نظافة', exp).id, 'فواتير');
 });
+
+test('instapayFee matches the bank: 0.1%, at least 0.5, at most 20', () => {
+  for (const [a, f] of [[400, 0.5], [500, 0.5], [1000, 1], [1090, 1.09], [1250, 1.25], [3000, 3], [10000, 10], [50000, 20]]) assert.equal(L.instapayFee(a), f, String(a));
+  assert.equal(L.instapayFee(0), 0);
+});

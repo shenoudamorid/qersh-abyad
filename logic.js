@@ -985,6 +985,8 @@ function stealWords(other,words,names){
     return !ts.some(t=>single.has(t)) || ts.some(t=>car.has(t));
   });
 }
+/* InstaPay's fee on a payment sent from a bank account: 0.1%, at least 0.5, at most 20 ج */
+const instapayFee=a=>a>0?Math.min(20,Math.max(0.5,Math.round(a*0.1)/100)):0;
 /* which rented unit a note is about: its name («بالمز»), words learned from past entries, and —
    with a single unit — guest words («تنضيف بعد الضيف»). Only one unit matching counts. */
 const GUEST_W=['الضيف','للضيف','ضيف','الضيوف','ضيوف','جيست','جست','guest','تشيك اوت','بعد الضيف','الشقة المؤجرة','شقة الايجار','الشقة اللي بأجرها'];
@@ -1163,4 +1165,4 @@ if(typeof module!=='undefined') module.exports={iso,parseISO,dim,prevMonth,nextM
   txDelta,fxGain,afterRecon,budgetCross,recurringDue,months12,rentOverdue,rentPaid,rentLeft,rentDueDate,
   debtPaid,debtLeft,debtFlows,creditPaid,creditLeft,creditFlows,allocatePayment,stayNet,stayPaid,stayLeft,stayDue,stayRefunded,stayFeeOwed,isPlatform,stayOut,stayNightsIn,stayEarnedIn,staySummary,stayClashes,unitMonth,
   unitKey,isBiz,inScope,migrateUnits,rentalMonth,unitsLiveIn,waNumber,dueItems,learnPhrase,wordNumber,norm,normDigits,stripAl,tokOf,tokMatch,
-  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries,pinCat,KID_W,catPreset,stealWords,unitFromText,GUEST_W};
+  parseSentence,guessCat,niceRound,cleanText,spendingPlan,CAT_WORDS,checkBackup,repairBackup,crc32,zipStore,buildXlsx,splitEntries,pinCat,KID_W,catPreset,stealWords,unitFromText,GUEST_W,instapayFee};
