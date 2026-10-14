@@ -624,7 +624,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=62;
+const APP_VER=63;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1324,6 +1324,7 @@ function renderReadout(){
   if(S.draft.unit && k!=='trf' && k!=='inc') $('#tag').innerHTML+=` · 🏘 ${esc(unitName(S.draft.unit))}`;
   if(S.draft.photo && k!=='trf') $('#tag').innerHTML+=' · 📷';
   if(S.draft.who && (k==='exp'||k==='ref')) $('#tag').innerHTML+=` · ${esc(personLbl(S.draft.who))}`;
+  if(draftIpa() && Number(a)>0) $('#tag').innerHTML+=` · 💸 إنستاباي +${money(instapayFee(Number(a)-(S.draft.split&&!S.draft.credit?S.draft.split.amount:0)))}`;
   if(S.draft.split && k==='exp' && !S.draft.credit) $('#tag').innerHTML+=` · 💳 + ${esc(acctOf(S.draft.split.acct).name)} <span class="num">${money0(S.draft.split.amount)}</span>`;
   if(S.draft.credit && k==='exp') $('#tag').innerHTML+=` · 🧾 آجل${S.draft.credit.vendor?' — '+esc(S.draft.credit.vendor):''}`;
   if(S.draft.fee && k==='trf') $('#tag').innerHTML+=` · رسوم ${money(S.draft.fee)}`;
@@ -1392,6 +1393,25 @@ function bindSplit(pre,totalFn,mainFn){
 const readSplit=pre=>$('#'+pre+'Sp')&&$('#'+pre+'Sp').checked&&Number($('#'+pre+'SpN').value)>0
   ?{acct:$('#'+pre+'SpA').value,amount:Math.round(Number($('#'+pre+'SpN').value)*100)/100}:null;
 const splitLbl=ps=>ps.map(x=>`${acctOf(x.acct).name} ${money0(x.amount)}`).join(' + ');
+
+/* ── InstaPay: a payment sent by transfer costs the bank's fee too; it's kept as its own small expense
+   (feeOf → the payment) from the same account, and follows the payment when it's edited or deleted ── */
+const ipaAble=(kind,acct)=>kind==='exp'&&acctOf(acct).type!=='cash'&&!acctOf(acct).ccy;
+const ipaDefault=acct=>!!((S.settings.ipaAcct||{})[acct]);
+const draftIpa=()=>ipaAble(S.draft.kind,S.draft.acct)&&!S.draft.credit&&(S.draft.ipa!==undefined?S.draft.ipa:ipaDefault(S.draft.acct));
+const feeOfTx=t=>S.tx.find(x=>x.feeOf===t.id);
+const feeCatId=()=>(guessCat('عمولة تحويل',catsOf('exp'))||catsOf('exp').slice(-1)[0]).id;
+async function syncFee(t){
+  const f=feeOfTx(t), want=t.ipa&&ipaAble(t.kind,t.acct)&&!t.credit?instapayFee(t.amount):0;
+  if(!want){ if(f){ await Store.del('tx',f.id); S.tx=S.tx.filter(x=>x.id!==f.id); } return; }
+  const v={kind:'exp',amount:want,cat:f?f.cat:feeCatId(),acct:t.acct,note:'عمولة إنستاباي',date:t.date,feeOf:t.id};
+  if(f){ Object.assign(f,v); if(t.unitId) f.unitId=t.unitId; else delete f.unitId; await Store.put('tx',f); }
+  else { const n={id:uid(),at:(t.at||Date.now())+2,...v,...(t.unitId?{unitId:t.unitId}:{})}; S.tx.push(n); await Store.put('tx',n); sortTx(); }
+}
+function ipaField(id,on,amt){
+  return `<label class="chk" style="margin:0 0 12px"><input type="checkbox" id="${id}" ${on?'checked':''}>
+    <span>💸 اتدفع بتحويل إنستاباي <small style="color:var(--dim)" id="${id}L">${amt>0?`— العمولة ${money(instapayFee(amt))}`:'— العمولة 0.1% (من 0.5 لـ 20)'}</small></span></label>`;
+}
 
 async function commit(t,onUndo){
   const {_split:sp,...base}=t;
@@ -1545,16 +1565,19 @@ $('#noteBtn').addEventListener('click',()=>{
     <div class="f"><label>التاريخ</label><input id="fDate" type="date" value="${S.draft.date}"></div>
     ${unitField(S.draft.unit,S.draft.kind)}
     ${whoField(S.draft.who||'',S.draft.kind)}
+    ${ipaAble(S.draft.kind,S.draft.acct)?ipaField('fIpa',draftIpa(),Number(S.draft.amt)-(S.draft.split?S.draft.split.amount:0)):''}
     ${S.draft.kind==='exp'&&!acctOf(S.draft.acct).ccy?splitField('f',S.draft.acct,S.draft.split||null):''}
     ${creditFields(S.draft.kind==='exp'&&PRO()?(S.draft.credit||null):undefined)}
     ${S.draft.kind!=='trf'?`<div class="f"><label>صورة الإيصال (لو حابب)</label><div id="fPhW">${S.draft.photo?`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px">`:''}
       ${photoPicker('fPh',S.draft.photo?'📷 غيّر الصورة':'📷 صوّر الإيصال أو اختار صورة')}</div></div>`:''}
     ${S.draft.kind==='trf'?`<div class="f"><label>رسوم التحويل (إنستاباي / فودافون كاش / البنك)</label>
-      <input id="fFee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${S.draft.fee||''}"></div>`:''}
+      <input id="fFee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${S.draft.fee||''}">
+      ${Number(S.draft.amt)>0?`<button type="button" class="ghost" id="fFeeIpa" style="margin:8px 0 0">💸 عمولة إنستاباي (${money(instapayFee(Number(S.draft.amt)))})</button>`:''}</div>`:''}
     ${ccOpts}
     <div class="acts"><button class="no" onclick="closeSheet()">إلغاء</button>
       <button class="go" id="fOk">تم</button></div>`);
   bindSplit('f',()=>Number(S.draft.amt)||0,()=>S.draft.acct);
+  if($('#fFeeIpa')) $('#fFeeIpa').onclick=()=>{ $('#fFee').value=instapayFee(Number(S.draft.amt)); };
   if($('#fPh')) $('#fPh').onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
     try{ S.draft.photo=await shrinkPhoto(f);
       $('#fPhW').innerHTML=`<img src="${S.draft.photo}" alt="" style="max-height:120px;border-radius:10px;display:block;margin:0 auto 8px"><div style="text-align:center;font-size:12.5px;color:var(--mint)">✓ الصورة هتتحفظ مع المصروف</div>`;
@@ -1577,6 +1600,7 @@ $('#noteBtn').addEventListener('click',()=>{
     if(sp&&sp.acct===S.draft.acct) return toast('اختار حساب تاني غير اللي فوق');
     if(sp&&Number(S.draft.amt)>0&&sp.amount>=Number(S.draft.amt)) return toast('اللي من الحساب التاني لازم يبقى أقل من المبلغ كله');
     S.draft.split=sp;
+    if($('#fIpa')) S.draft.ipa=$('#fIpa').checked;
     closeSheet(); renderReadout();
   };
 });
@@ -1739,8 +1763,14 @@ $('#save').addEventListener('click',async()=>{
     await Store.put('tx',f); S.tx.push(f);
   }
   const ph=k!=='trf'?S.draft.photo:null;
+  const ipa=draftIpa();
+  if(ipa) t.ipa=1;
+  /* the choice you made by hand is this account's default next time */
+  if(S.draft.ipa!==undefined && ipaAble(k,t.acct)){ (S.settings.ipaAcct||(S.settings.ipaAcct={}))[t.acct]=!!S.draft.ipa; await saveSettings(); }
+  S.draft.ipa=undefined;
   S.draft.amt=''; S.draft.note=''; S.draft.date=today(); S.draft.ccy=null; S.draft.catPicked=false; S.draft.unit=''; S.draft.fee=0; S.draft.credit=null; S.draft.photo=null; S.draft.who=''; S.draft.split=null; S.draft.unitPicked=false;
-  const rec=await commit(t);
+  const rec=await commit(t,ipa?async()=>{ const f=S.tx.find(x=>x.feeOf===(rec&&rec.id)); if(f){ await Store.del('tx',f.id); S.tx=S.tx.filter(x=>x.id!==f.id); } }:null);
+  if(ipa&&rec){ await syncFee(rec); renderAccts(); renderRail(); }
   if(ph&&rec){ await savePhoto(rec.id,ph); renderLog(); }
 });
 
@@ -1801,7 +1831,7 @@ function renderLog(){
   const active=S.filter.cat||S.filter.acct||S.filter.kind||S.filter.scope||S.filter.who;
   $('#logFilter').textContent=active?'إلغاء التصفية':'تصفية';
   const tot=sum(list.filter(t=>t.kind==='exp'))-sum(list.filter(t=>t.kind==='ref'));
-  const n=list.filter(t=>!t.grp||t.id===t.grp||S.filter.acct||!list.some(x=>x.id===t.grp)).length+dl.length+cl.length;
+  const n=list.filter(t=>(!t.grp||t.id===t.grp||S.filter.acct||!list.some(x=>x.id===t.grp))&&!(t.feeOf&&list.some(x=>x.id===t.feeOf))).length+dl.length+cl.length;
   $('#logSub').innerHTML=n
     ?`${n} حركة${S.search||active?` · <span class="num">${money0(tot)}</span> ${esc(S.settings.cur)} مصاريف`:''}`
     :'فاضي';
@@ -1821,13 +1851,15 @@ function renderLog(){
     const dI=sum(day.filter(t=>t.kind==='inc'));
     const net=dI-dE, anyInc=day.some(t=>t.kind==='inc');
     const rows=day.map(t=>{
+      if(t.feeOf&&day.some(x=>x.id===t.feeOf)) return '';
+      const fee=t.ipa?day.find(x=>x.feeOf===t.id):null;
       const mates=t.grp&&!S.filter.acct?day.filter(x=>x.grp===t.grp).sort((x,y)=>(y.id===y.grp)-(x.id===x.grp)):[t];
       if(mates.length>1&&t.id!==t.grp&&mates.some(x=>x.id===t.grp)) return '';
       const amt=mates.reduce((v,x)=>v+x.amount,0);
       const isTrf=t.kind==='trf';
       const icon=isTrf?'⇄':catOf(t.cat).emoji;
       const name=isTrf?`${acctOf(t.acct).name} ← ${acctOf(t.toAcct).name}`:catOf(t.cat).name;
-      const bits=[t.note, mates.length>1?'💳 '+splitLbl(mates):t.grp?'💳 جزء':'', t.who?personLbl(t.who):'', S.photoIds.has(t.id)?'📎':'', t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
+      const bits=[t.note, fee?`💸 عمولة ${money(fee.amount)}`:'', mates.length>1?'💳 '+splitLbl(mates):t.grp?'💳 جزء':'', t.who?personLbl(t.who):'', S.photoIds.has(t.id)?'📎':'', t.toCcy?`${money(t.toRaw)} ${t.toCcy}`:'', t.unitId?'🏘 '+unitName(t.unitId):isBiz(t)?'🏘':'',
         t.credit?`🧾 آجل${t.credit.vendor?' — '+t.credit.vendor:''}${creditLeft(t)>0?` · فاضل ${money0(creditLeft(t))}`:' · اتدفع'}`:'', t.ccy?`${money(t.raw)} ${t.ccy}`:'', t.auto?'ثابت':'', t.kind==='ref'?'مرتجع':''].filter(Boolean);
       const cls=t.kind==='inc'||t.kind==='ref'?' plus':isTrf?' trf':'';
       const sign=t.kind==='inc'||t.kind==='ref'?'+':'';
@@ -1937,6 +1969,7 @@ function editTx(id){
       ${catsOf(t.kind==='ref'?'exp':t.kind).map(c=>`<option value="${c.id}" ${c.id===t.cat?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('')}</select></div>
     <div class="f"><label>${isTrf?'من حساب':'الحساب'}</label><select id="eAcct">${fxA?S.accts.filter(a=>a.ccy===fxA.ccy&&(!a.archived||a.id===t.acct)).map(a=>`<option value="${a.id}" ${a.id===t.acct?'selected':''}>${a.emoji} ${esc(a.name)}</option>`).join(''):acctOpts(t.acct)}</select></div>
     <div class="f" id="eToWrap"${isTrf?'':' hidden'}><label>إلى حساب</label><select id="eTo">${acctOpts(t.toAcct)}</select></div>
+    <div id="eIpaW">${ipaAble(t.kind,t.acct)&&!t.credit?ipaField('eIpa',!!t.ipa,t.amount):''}</div>
     <div id="eSpW">${t.kind==='exp'&&!fxA&&!t.credit?splitField('e',t.acct,mate):''}</div>
     <div class="f"><label>ملاحظة</label><input id="eNote" maxlength="80" value="${esc(t.note||'')}"></div>
     <div id="eUnitW">${unitField(t.unitId||'',t.kind,'eUnit')}</div>
@@ -2010,6 +2043,8 @@ function editTx(id){
       else delete t.credit; }
     else delete t.credit;
     if(k!=='trf' && t.cat!==catBefore && t.note) await learnFrom(t.note,t.cat);
+    if($('#eIpa')&&ipaAble(k,t.acct)) { if($('#eIpa').checked) t.ipa=1; else delete t.ipa; }
+    else if(!ipaAble(k,t.acct)) delete t.ipa;
     /* the second account's part follows everything but its own account and amount */
     if(sp){ t.amount=Math.round((amt-sp.amount)*100)/100; t.grp=t.id;
       const m=mate||{id:uid(),at:(t.at||Date.now())+1};
@@ -2017,13 +2052,16 @@ function editTx(id){
       if(!mate) S.tx.push(m); await Store.put('tx',m); }
     else { if(mate){ await Store.del('tx',mate.id); S.tx=S.tx.filter(x=>x.id!==mate.id); } delete t.grp; }
     await Store.put('tx',t); sortTx();
+    await syncFee(t);
     closeSheet(); renderLog(); renderRail(); renderAccts(); toast('اتعدل');
   };
   $('#eDel').onclick=async()=>{
-    await Store.del('tx',t.id); if(mate) await Store.del('tx',mate.id); S.tx=S.tx.filter(x=>x.id!==t.id&&(!mate||x.id!==mate.id));
+    const fee=feeOfTx(t);
+    await Store.del('tx',t.id); if(mate) await Store.del('tx',mate.id); if(fee) await Store.del('tx',fee.id);
+    S.tx=S.tx.filter(x=>x.id!==t.id&&(!mate||x.id!==mate.id)&&(!fee||x.id!==fee.id));
     const ph=await dropPhoto(t.id);
     closeSheet(); renderLog(); renderRail(); renderAccts(); renderQuick();
-    toast('اتحذف',async()=>{ await Store.put('tx',t); S.tx.push(t); if(mate){ await Store.put('tx',mate); S.tx.push(mate); } sortTx(); if(ph) await savePhoto(t.id,ph.data);
+    toast('اتحذف',async()=>{ await Store.put('tx',t); S.tx.push(t); if(mate){ await Store.put('tx',mate); S.tx.push(mate); } if(fee){ await Store.put('tx',fee); S.tx.push(fee); } sortTx(); if(ph) await savePhoto(t.id,ph.data);
       renderLog(); renderRail(); renderAccts(); renderQuick(); toast('رجعت'); });
   };
 }
