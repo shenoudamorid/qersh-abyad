@@ -624,7 +624,7 @@ details.more>summary::-webkit-details-marker{display:none}
 'use strict';
 
 /* the app's version — must match the number in sw.js (a test checks) */
-const APP_VER=61;
+const APP_VER=62;
 
 /* ═══════ storage ═══════ */
 const Store = (() => {
@@ -1971,6 +1971,7 @@ function editTx(id){
     try{ await savePhoto(t.id,await shrinkPhoto(f)); showPh(); renderLog(); toast('اتحفظت الصورة'); }catch(_){ toast('مقدرتش أفتح الصورة دي'); } };
   showPh();
   $('#eOk').onclick=async()=>{
+    const catBefore0=t.cat;
     const a=Number($('#eAmt').value); if(!(a>0)){ $('#eAmt').focus(); return; }
     const k=$('#eKind').value;
     if(t.credit && a<creditPaid(t)-0.005){ $('#eAmt').focus(); return toast(`اتدفع منه ${money(creditPaid(t))} — المبلغ ما ينفعش يبقى أقل`); }
@@ -1996,6 +1997,10 @@ function editTx(id){
     const w=$('#eWho')?$('#eWho').value:'';
     if(w!==(t.who||'')) delete t.whoAuto;
     if(w&&(k==='exp'||k==='ref')) t.who=w; else { delete t.who; delete t.whoAuto; }
+    /* «لمين» the app picked follows the new category / note; one picked by hand stays */
+    const catNow=k==='trf'?'':$('#eCat').value;
+    if(t.whoAuto&&(k==='exp'||k==='ref')){ const aw=autoWho(t.note,catNow); if(aw) t.who=aw; else { delete t.who; delete t.whoAuto; } }
+    else if(!t.who&&!w&&(k==='exp'||k==='ref')&&catNow!==catBefore0){ const aw=autoWho(t.note,catNow); if(aw){ t.who=aw; t.whoAuto=1; } }
     /* booking and rent income keep their unit — it follows the booking / contract */
     if(k==='exp'||k==='ref'){ if(u) t.unitId=u; else delete t.unitId; }
     else if(!t.stay && !t.rent) delete t.unitId;
@@ -2692,7 +2697,7 @@ function peopleSheet(){
 
 /* ═══════ one-time tidy: old entries follow today's rules (tithe, a kid's category, the motorcycle) ═══════
    Runs once per device. Everything it changes is kept so one tap puts it all back. */
-const TIDY_V=2;
+const TIDY_V=3;
 async function autoTidy(){
   const v0=S.settings.tidyV||0;
   if(v0>=TIDY_V) return null;
@@ -2700,6 +2705,11 @@ async function autoTidy(){
   if(v0<2){ const bills=S.cats.find(c=>c.kind==='exp'&&c.name==='فواتير'), home=S.cats.find(c=>c.kind==='exp'&&c.name==='بيت ومعيشة');
     if(bills&&(bills.words||[]).includes('نظافة')){ bills.words=bills.words.filter(w=>w!=='نظافة'); await Store.put('cats',bills); }
     if(home){ const add=CAT_WORDS['بيت ومعيشة'].slice(0,14).filter(w=>!(home.words||[]).includes(w)); if(add.length){ home.words=[...add,...(home.words||[])]; await Store.put('cats',home); } } }
+  /* v3: «لمين» the app picked, checked again against today's category and note (a category changed by hand
+     used to leave the old guess behind — «تعليم قياده» tagged لولو) */
+  if(v0<3){ const ch=S.tx.filter(t=>t.whoAuto&&(t.kind==='exp'||t.kind==='ref')&&autoWho(t.note,t.cat)!==(t.who||''));
+    for(const t of ch){ const aw=autoWho(t.note,t.cat); if(aw) t.who=aw; else { delete t.who; delete t.whoAuto; } }
+    if(ch.length) await Store.batch(ch.map(t=>['put','tx',t])); }
   if(v0>=1){ S.settings.tidyV=TIDY_V; await saveSettings(); return null; }
   const copy=x=>JSON.parse(JSON.stringify(x)), U={tx:new Map(),cats:new Map(),recur:new Map(),newCat:null}, moved=[], notes=[];
   const keep=(m,x)=>{ if(!m.has(x.id)) m.set(x.id,copy(x)); };
